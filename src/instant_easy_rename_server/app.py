@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 AI Toolmaker (AI Toolmaker Official)
+
 from __future__ import annotations
 
 import argparse

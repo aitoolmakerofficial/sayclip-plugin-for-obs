@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 AI Toolmaker (AI Toolmaker Official)
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -770,7 +773,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             return QIcon()
         return QIcon(str(path))
 
-    _set_windows_app_user_model_id("aitoolmaker.sayclip")
+    _set_windows_app_user_model_id("aitoolmakerofficial.sayclip")
     app = QApplication.instance() or QApplication(sys.argv)
     previous_sigint = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, lambda signum, frame: app.quit())

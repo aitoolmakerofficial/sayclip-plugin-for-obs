@@ -54,12 +54,12 @@ The OBS script has two setup areas:
 
 For filename formats that include `{source}`, SayClip resolves the source like this:
 
-1. If `Title source name` is filled in the OBS script settings and OBS has a source with that name, use that source name as `source_title`.
+1. If `Title source name` is filled in the OBS script settings and OBS has a source with that name, read that source's window/title setting as `source_title`.
 2. Otherwise use `source_title` if the OBS bridge provides one.
 3. Otherwise use the parent folder of the saved recording/replay file.
 4. If neither value is usable, omit the source token.
 
-Leave `Title source name` empty to keep the previous parent-folder behavior.
+If the configured OBS source exists but does not expose a usable window/title setting, SayClip still falls back to the parent folder instead of using the OBS source name itself. Leave `Title source name` empty to keep the previous parent-folder behavior.
 
 ## OBS Custom Browser Dock
 
@@ -70,3 +70,30 @@ Leave `Title source name` empty to keep the previous parent-folder behavior.
    Name: SayClip
    URL: http://127.0.0.1:17891/dock
 5. Apply.
+
+## License and Attribution
+
+SayClip is free and open-source software licensed under the GNU General Public
+License v2.0 or later.
+
+You are free to use, study, modify, and redistribute SayClip under the terms of
+the GPL-2.0-or-later license.
+
+SayClip was originally created by AI Toolmaker (AI Toolmaker Official).
+
+If SayClip helps you, attribution is appreciated:
+
+- Star the official repository:
+  https://github.com/aitoolmakerofficial/obs-sayclip
+- Credit the original author: AI Toolmaker (AI Toolmaker Official)
+- Subscribe to the YouTube channel:
+  https://www.youtube.com/@WorkingAiTools
+- Share the official project page:
+  https://github.com/aitoolmakerofficial/obs-sayclip
+
+Please do not present modified builds, forks, mirrors, or unofficial
+distributions as the official SayClip release.
+
+Official releases are published only through the official SayClip repository:
+
+https://github.com/aitoolmakerofficial/obs-sayclip
