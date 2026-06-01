@@ -1,7 +1,7 @@
 [project]
-name = "instant-easy-rename"
+name = "sayclip"
 version = "0.1.0"
-description = "Local backend skeleton for Instant Easy Rename."
+description = "Local backend skeleton for SayClip."
 requires-python = ">=3.11"
 dependencies = [
   "PySide6==6.11.1",

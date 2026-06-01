@@ -6,10 +6,18 @@ from instant_easy_rename_server.config import load_config, save_config
 def test_load_default_config_when_file_missing(tmp_path: Path) -> None:
     config = load_config(tmp_path)
 
-    assert config.app_name == "Instant Easy Rename"
+    assert config.app_name == "SayClip"
     assert config.app_version == "0.1.0"
     assert config.backend_host == "127.0.0.1"
     assert config.audio["max_record_seconds"] == 8
+
+
+def test_load_config_migrates_legacy_app_name(tmp_path: Path) -> None:
+    (tmp_path / "config.toml").write_text('[app]\nname = "Instant Easy Rename"\n', encoding="utf-8")
+
+    config = load_config(tmp_path)
+
+    assert config.app_name == "SayClip"
     assert config.audio["beep_start"] is True
     assert config.audio["beep_end"] is True
 

@@ -10,10 +10,10 @@ OBS_DOCK_URL = "http://127.0.0.1:17891/dock"
 
 def _load_bridge():
     path = Path(__file__).resolve().parent / "src" / "obs" / "instant_bridge.py"
-    spec = importlib.util.spec_from_file_location("instant_easy_rename_bridge", path)
+    spec = importlib.util.spec_from_file_location("sayclip_bridge", path)
     module = importlib.util.module_from_spec(spec)
     if spec.loader is None:
-        raise RuntimeError("Could not load Instant Easy Rename bridge.")
+        raise RuntimeError("Could not load SayClip Bridge.")
     spec.loader.exec_module(module)
     return module
 

@@ -17,8 +17,8 @@ DOCK_STATIC_DIR = Path(__file__).resolve().parent / "dock_static"
 
 
 def make_handler(api: BackendApi) -> type[BaseHTTPRequestHandler]:
-    class InstantEasyRenameHandler(BaseHTTPRequestHandler):
-        server_version = "InstantEasyRename/0.1.0"
+    class SayClipHandler(BaseHTTPRequestHandler):
+        server_version = "SayClip/0.1.0"
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
@@ -129,7 +129,7 @@ def make_handler(api: BackendApi) -> type[BaseHTTPRequestHandler]:
             except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
                 logger.debug("HTTP client disconnected before response was written: path=%s", self.path)
 
-    return InstantEasyRenameHandler
+    return SayClipHandler
 
 
 def _save_status_code(result: dict[str, Any]) -> int:
@@ -153,11 +153,11 @@ def create_server(api: BackendApi | None = None) -> ThreadingHTTPServer:
 def main() -> None:
     config = load_config()
     server = create_server(BackendApi(config))
-    print(f"Instant Easy Rename backend listening on http://{config.backend_host}:{config.backend_port}")
+    print(f"SayClip backend listening on http://{config.backend_host}:{config.backend_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping Instant Easy Rename backend...")
+        print("\nStopping SayClip backend...")
     finally:
         server.shutdown()
         server.server_close()

@@ -280,7 +280,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             dock_layout.addWidget(self.open_dock_button, 0, 1)
             dock_layout.setColumnStretch(2, 1)
 
-            dock_help = QLabel("OBS dock: Docks -> Custom Browser Docks -> Name: Instant Easy Rename -> URL above.")
+            dock_help = QLabel("OBS dock: Docks -> Custom Browser Docks -> Name: SayClip -> URL above.")
             dock_help.setObjectName("Muted")
             dock_help.setWordWrap(True)
 
@@ -765,7 +765,9 @@ def run_ui(api: BackendApi, server: Any) -> int:
             save_config(api.config)
 
     def app_icon() -> QIcon:
-        path = api.config.root / "img" / "sayclip-icon.png"
+        path = Path(__file__).resolve().parent / "img" / "sayclip-icon.png"
+        if not path.exists():
+            path = api.config.root / "img" / "sayclip-icon.png"
         if not path.exists():
             return QIcon()
         return QIcon(str(path))

@@ -16,9 +16,9 @@ except Exception:
     obs = None
 
 
-APP_NAME = "Instant Easy Rename"
+APP_NAME = "SayClip"
 APP_VERSION = "0.1.0"
-YOUTUBE_GUIDE_URL = "https://www.youtube.com/@AIToolMaker"
+YOUTUBE_GUIDE_URL = "https://www.youtube.com/@WorkingAiTools"
 OBS_DOCK_URL = "http://127.0.0.1:17891/dock"
 DEFAULT_CONFIG = {
     "backend": {
@@ -62,7 +62,7 @@ def script_description():
 
 
 def script_load(settings):
-    _log("Loading Instant Easy Rename")
+    _log("Loading SayClip Bridge")
     _register_frontend_callback()
     _register_hotkeys(settings)
     _register_command_polling()
@@ -75,7 +75,7 @@ def script_load(settings):
 
 
 def script_unload():
-    _log("Unloading Instant Easy Rename")
+    _log("Unloading SayClip Bridge")
     if obs:
         try:
             obs.obs_frontend_remove_event_callback(_on_frontend_event)
@@ -146,7 +146,7 @@ def script_defaults(settings):
 
 def start_backend(*, show_ui=False):
     if not is_setup_complete():
-        _log("Setup is incomplete; launching Zero Step installer instead of backend", visible=True)
+        _log("Setup is incomplete; launching SayClip Onboarding instead of backend", visible=True)
         return start_onboarding()
     config = load_bridge_config()
     _set_backend_status("Starting")
@@ -157,7 +157,7 @@ def start_backend(*, show_ui=False):
         return True
     if health["reachable"]:
         _set_backend_status("Error")
-        _log("Port is occupied by a non Instant Easy Rename service: %s" % health.get("error", "unknown"), visible=True)
+        _log("Port is occupied by a non SayClip service: %s" % health.get("error", "unknown"), visible=True)
         return False
 
     process_config = config["backend"]["process"]
@@ -213,7 +213,7 @@ def start_onboarding():
         _log("Setup is required, but install.bat was not found: %s" % installer, visible=True)
         return False
     _set_backend_status("Setup Required")
-    _log("Launching Zero Step installer: %s" % installer, visible=True)
+    _log("Launching SayClip Onboarding: %s" % installer, visible=True)
     try:
         process = subprocess.Popen(
             _installer_command(installer),
@@ -505,15 +505,15 @@ def _register_command_polling():
 
 def _register_hotkeys(settings):
     bindings = {
-        "start_backend": ("Instant Easy Rename: Start backend", request_start_backend),
-        "stop_backend": ("Instant Easy Rename: Stop backend", request_stop_backend),
-        "hard_reset_backend": ("Instant Easy Rename: Force Restart Backend", request_hard_reset_backend),
+        "start_backend": ("SayClip Bridge: Start backend", request_start_backend),
+        "stop_backend": ("SayClip Bridge: Stop backend", request_stop_backend),
+        "hard_reset_backend": ("SayClip Bridge: Force Restart Backend", request_hard_reset_backend),
         "stop_recording_voice_rename": (
-            "Instant Easy Rename: Stop recording and voice rename",
+            "SayClip Bridge: Stop recording and voice rename",
             stop_recording_and_voice_rename,
         ),
         "save_replay_voice_rename": (
-            "Instant Easy Rename: Save replay buffer and voice rename",
+            "SayClip Bridge: Save replay buffer and voice rename",
             save_replay_buffer_and_voice_rename,
         ),
     }
@@ -623,7 +623,7 @@ def _kill_verified_backend_on_port(config):
     health = check_backend_health(config)
     if not health.get("connected"):
         if health.get("reachable"):
-            _log("Configured backend port is occupied by a non Instant Easy Rename service; not killing it", visible=True)
+            _log("Configured backend port is occupied by a non SayClip service; not killing it", visible=True)
         return False
     pid = _pid_listening_on_port(int(config["backend"]["port"]))
     if not pid:
@@ -793,7 +793,7 @@ def _run_background_callback(name, callback):
 
 
 def _log(message, *, visible=False):
-    text = "[Instant Easy Rename] %s" % message
+    text = "[SayClip Bridge] %s" % message
     _write_bridge_log(text)
     if visible and obs and hasattr(obs, "script_log"):
         try:

@@ -1,2 +1,2 @@
-APP_NAME = "Instant Easy Rename"
+APP_NAME = "SayClip"
 APP_VERSION = "0.1.0"

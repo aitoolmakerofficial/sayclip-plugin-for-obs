@@ -23,7 +23,7 @@ def test_health_contract(tmp_path: Path) -> None:
     api = BackendApi(load_config(tmp_path))
 
     assert api.health() == {
-        "app": "Instant Easy Rename",
+        "app": "SayClip",
         "version": "0.1.0",
         "status": "ok",
     }
@@ -413,7 +413,7 @@ def test_http_dock_returns_html(tmp_path: Path) -> None:
         server.shutdown()
         thread.join(timeout=2)
 
-    assert "Instant Easy Rename" in html
+    assert "SayClip" in html
 
 
 def test_http_status_and_open_folder_no_job(tmp_path: Path) -> None:

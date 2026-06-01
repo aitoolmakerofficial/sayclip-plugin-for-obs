@@ -11,7 +11,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 set PYTHONPATH=%CD%\src;%PYTHONPATH%
 
-echo Starting Instant Easy Rename...
+echo Starting SayClip...
 echo.
 echo Health: http://127.0.0.1:17891/health
 echo Jobs:   http://127.0.0.1:17891/jobs

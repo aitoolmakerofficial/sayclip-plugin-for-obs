@@ -6,6 +6,7 @@ $ProjectRoot = (Get-Location).Path
 $VenvPath = Join-Path $ProjectRoot ".venv"
 $VenvPython = Join-Path $VenvPath "Scripts\python.exe"
 $ProductName = "SayClip"
+$OnboardingName = "SayClip Onboarding"
 $ProductTagline = "Local OBS voice clip rename setup"
 $TotalSetupSteps = 6
 $ModelCatalog = @(
@@ -64,7 +65,7 @@ function New-ProgressBar($Step) {
 
 function Show-SetupHeader($Step, $Title, $Status = "") {
     Clear-Host
-    Write-Host $ProductName -ForegroundColor Cyan
+    Write-Host $OnboardingName -ForegroundColor Cyan
     Write-Muted $ProductTagline
     Write-Host ""
     if ($Step -gt 0) {

@@ -7,7 +7,7 @@ import tomllib
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "app": {"name": "Instant Easy Rename", "version": "0.1.0"},
+    "app": {"name": "SayClip", "version": "0.1.0"},
     "backend": {
         "host": "127.0.0.1",
         "port": 17891,
@@ -118,6 +118,7 @@ def load_config(root: Path | str | None = None, filename: str = "config.toml") -
     if path.exists():
         with path.open("rb") as handle:
             data = _deep_merge(data, tomllib.load(handle))
+    _migrate_legacy_branding(data)
     _drop_legacy_job_persistence(data)
     return AppConfig(root=project_root, data=data)
 
@@ -151,6 +152,12 @@ def _drop_legacy_job_persistence(data: dict[str, Any]) -> None:
         return
     jobs.pop("persist_to_json", None)
     jobs.pop("json_path", None)
+
+
+def _migrate_legacy_branding(data: dict[str, Any]) -> None:
+    app = data.get("app")
+    if isinstance(app, dict) and app.get("name") == "Instant Easy Rename":
+        app["name"] = "SayClip"
 
 
 def _to_toml(data: dict[str, Any]) -> str:

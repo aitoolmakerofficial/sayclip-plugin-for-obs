@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
-    print(f"Instant Easy Rename listening on http://{config.backend_host}:{config.backend_port}")
+    print(f"SayClip listening on http://{config.backend_host}:{config.backend_port}")
     try:
         if args.headless:
             _run_headless(api)

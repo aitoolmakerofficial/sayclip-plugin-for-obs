@@ -4,11 +4,11 @@ import time
 
 
 BRIDGE_PATH = Path(__file__).resolve().parents[1] / "src" / "obs" / "instant_bridge.py"
-PRODUCT_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "InstantEasyRename.py"
+PRODUCT_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "SayClip_Starter.py"
 
 
 def load_bridge():
-    spec = importlib.util.spec_from_file_location("instant_easy_rename_server_bridge_under_test", BRIDGE_PATH)
+    spec = importlib.util.spec_from_file_location("sayclip_bridge_under_test", BRIDGE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -16,7 +16,7 @@ def load_bridge():
 
 
 def load_product_script():
-    spec = importlib.util.spec_from_file_location("instant_easy_rename_obs_script_under_test", PRODUCT_SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("sayclip_obs_script_under_test", PRODUCT_SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -37,7 +37,7 @@ def test_bridge_locates_project_root_from_script_path() -> None:
 
 def test_bridge_locates_project_root_with_example_config_only(tmp_path: Path) -> None:
     bridge = load_bridge()
-    script = tmp_path / "InstantEasyRename.py"
+    script = tmp_path / "SayClip_Starter.py"
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text("", encoding="utf-8")
     (tmp_path / "src").mkdir()

@@ -52,7 +52,7 @@ class FakeAudioRecorder:
     def record(self, *, on_level: LevelCallback | None = None) -> AudioPayload:
         logger.info("Fake audio recording started")
         if not self.available:
-            raise AudioRecorderError("Microphone unavailable. Instant Easy Rename cannot listen.")
+            raise AudioRecorderError("Microphone unavailable. SayClip cannot listen.")
         if on_level:
             on_level(self.level)
         logger.info("Fake audio recording completed: level=%s bytes=%s", self.level, len(self.payload.data or b""))
@@ -64,7 +64,7 @@ class FakeAudioRecorder:
     def readiness_error(self) -> str | None:
         if self.available:
             return None
-        return "Microphone unavailable. Instant Easy Rename cannot listen."
+        return "Microphone unavailable. SayClip cannot listen."
 
 
 class DefaultMicrophoneRecorder:

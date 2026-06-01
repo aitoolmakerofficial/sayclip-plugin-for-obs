@@ -81,7 +81,7 @@ def test_microphone_unavailable_maps_to_clean_error(tmp_path: Path) -> None:
     job = api.list_jobs()["jobs"][0]
 
     assert job["status"] == "error"
-    assert job["error"] == "Microphone unavailable. Instant Easy Rename cannot listen."
+    assert job["error"] == "Microphone unavailable. SayClip cannot listen."
 
 
 def test_faster_whisper_missing_model_reports_system_check(tmp_path: Path) -> None:
