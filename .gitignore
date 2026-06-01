@@ -24,3 +24,4 @@ htmlcov/
 *.log
 *.sdPlugin/bin/
 *.sdPlugin/logs/
+.idea/
