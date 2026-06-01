@@ -89,7 +89,7 @@ def test_bridge_payload_falls_back_to_parent_folder(tmp_path: Path) -> None:
     assert "source_title" not in payload
 
 
-def test_collect_obs_context_uses_configured_source_name(monkeypatch) -> None:
+def test_collect_obs_context_uses_configured_source_title_from_window(monkeypatch) -> None:
     bridge = load_bridge()
 
     class FakeSource:
@@ -99,31 +99,160 @@ def test_collect_obs_context_uses_configured_source_name(monkeypatch) -> None:
     class FakeObs:
         def __init__(self) -> None:
             self.released = []
+            self.data_released = False
 
         def obs_frontend_get_current_scene(self):
             return FakeSource("Game Scene")
 
         def obs_get_source_by_name(self, name):
-            return FakeSource(name) if name == "Save recording" else None
+            return FakeSource(name) if name == "game" else None
 
         def obs_source_get_name(self, source):
             return source.name
+
+        def obs_source_get_settings(self, source):
+            return {"window": "Honkai: Star Rail:UnityWndClass:StarRail.exe"}
+
+        def obs_data_get_string(self, settings, key):
+            return settings.get(key, "")
+
+        def obs_data_release(self, settings):
+            self.data_released = True
 
         def obs_source_release(self, source):
             self.released.append(source.name)
 
     fake_obs = FakeObs()
     monkeypatch.setattr(bridge, "obs", fake_obs)
-    bridge._state["title_source_name"] = "Save recording"
+    bridge._state["title_source_name"] = "game"
 
     context = bridge.collect_obs_context()
 
     assert context == {
         "scene_name": "Game Scene",
-        "source_name": "Save recording",
-        "source_title": "Save recording",
+        "source_name": "game",
+        "source_title": "Honkai: Star Rail",
     }
-    assert fake_obs.released == ["Game Scene", "Save recording"]
+    assert fake_obs.released == ["Game Scene", "game"]
+    assert fake_obs.data_released is True
+
+
+def test_collect_obs_context_does_not_use_configured_source_name_as_title(monkeypatch) -> None:
+    bridge = load_bridge()
+
+    class FakeSource:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class FakeObs:
+        def obs_frontend_get_current_scene(self):
+            return FakeSource("Game Scene")
+
+        def obs_get_source_by_name(self, name):
+            return FakeSource(name) if name == "game" else None
+
+        def obs_source_get_name(self, source):
+            return source.name
+
+        def obs_source_get_settings(self, source):
+            return {}
+
+        def obs_data_get_string(self, settings, key):
+            return ""
+
+        def obs_data_release(self, settings):
+            return None
+
+        def obs_source_release(self, source):
+            return None
+
+    monkeypatch.setattr(bridge, "obs", FakeObs())
+    bridge._state["title_source_name"] = "game"
+
+    context = bridge.collect_obs_context()
+
+    assert context["source_name"] == "game"
+    assert context["source_title"] is None
+
+
+def test_collect_obs_context_decodes_percent_encoded_window_title(monkeypatch) -> None:
+    bridge = load_bridge()
+
+    class FakeSource:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class FakeObs:
+        def obs_frontend_get_current_scene(self):
+            return FakeSource("Game Scene")
+
+        def obs_get_source_by_name(self, name):
+            return FakeSource(name) if name == "game" else None
+
+        def obs_source_get_name(self, source):
+            return source.name
+
+        def obs_source_get_settings(self, source):
+            return {"window": "Honkai%3A%20Star%20Rail%3AUnityWndClass%3AStarRail.exe"}
+
+        def obs_data_get_string(self, settings, key):
+            return settings.get(key, "")
+
+        def obs_data_release(self, settings):
+            return None
+
+        def obs_source_release(self, source):
+            return None
+
+    monkeypatch.setattr(bridge, "obs", FakeObs())
+    bridge._state["title_source_name"] = "game"
+
+    context = bridge.collect_obs_context()
+
+    assert context["source_title"] == "Honkai: Star Rail"
+
+
+def test_collect_obs_context_decodes_obs_escaped_window_title(monkeypatch) -> None:
+    bridge = load_bridge()
+
+    class FakeSource:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class FakeObs:
+        def obs_frontend_get_current_scene(self):
+            return FakeSource("Game Scene")
+
+        def obs_get_source_by_name(self, name):
+            return FakeSource(name) if name == "game" else None
+
+        def obs_source_get_name(self, source):
+            return source.name
+
+        def obs_source_get_settings(self, source):
+            return {"window": "Honkai#3A Star Rail:UnityWndClass:StarRail.exe"}
+
+        def obs_data_get_string(self, settings, key):
+            return settings.get(key, "")
+
+        def obs_data_release(self, settings):
+            return None
+
+        def obs_source_release(self, source):
+            return None
+
+    monkeypatch.setattr(bridge, "obs", FakeObs())
+    bridge._state["title_source_name"] = "game"
+
+    context = bridge.collect_obs_context()
+
+    assert context["source_title"] == "Honkai: Star Rail"
+
+
+def test_window_setting_to_title_accepts_obs_display_label() -> None:
+    bridge = load_bridge()
+
+    assert bridge._source_setting_to_title("[StarRail.exe]: Honkai: Star Rail", "window") == "Honkai: Star Rail"
 
 
 def test_collect_obs_context_keeps_folder_fallback_when_title_source_empty(monkeypatch) -> None:

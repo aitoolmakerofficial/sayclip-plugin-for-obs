@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 import re
 
 
@@ -10,7 +11,7 @@ JOB_TYPE_TOKENS = {"recording": "rec", "moment": "mom"}
 
 
 def sanitize_slug(value: str, fallback: str = "untitled") -> str:
-    text = value.lower()
+    text = _decode_percent_escapes(value).lower()
     text = "".join("-" if char in FORBIDDEN_WINDOWS_CHARS else char for char in text)
     text = "".join("" if ord(char) < 32 else char for char in text)
     text = re.sub(r"[\s_]+", "-", text)
@@ -64,7 +65,8 @@ def format_filename(
 
 
 def sanitize_filename_template_result(value: str, fallback: str = "untitled") -> str:
-    text = "".join("-" if char in FORBIDDEN_WINDOWS_CHARS else char for char in value)
+    text = _decode_percent_escapes(value)
+    text = "".join("-" if char in FORBIDDEN_WINDOWS_CHARS else char for char in text)
     text = "".join("" if ord(char) < 32 else char for char in text)
     text = re.sub(r"[\s]+", "-", text)
     text = re.sub(r"__+", "__", text)
@@ -78,6 +80,10 @@ def _source_token(value: str, unknown_source_token: str) -> str:
     if source == sanitize_slug(unknown_source_token, fallback=""):
         return ""
     return source
+
+
+def _decode_percent_escapes(value: str) -> str:
+    return unquote(str(value))
 
 
 def next_available_path(path: Path) -> Path:

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import unquote
 from urllib.request import Request, urlopen
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -449,7 +451,7 @@ def collect_obs_context():
         if source:
             try:
                 context["source_name"] = _safe_obs_source_name(source)
-                context["source_title"] = configured_source_name
+                context["source_title"] = _source_title_from_settings(source)
             finally:
                 _obs_call("obs_source_release", source)
         return context
@@ -767,6 +769,72 @@ def _safe_obs_source_name(source):
         except Exception:
             return None
     return None
+
+
+def _source_title_from_settings(source):
+    if not obs or not source or not hasattr(obs, "obs_source_get_settings"):
+        return None
+    settings = None
+    try:
+        settings = obs.obs_source_get_settings(source)
+        for key in ("title", "window_title", "window", "executable"):
+            value = _obs_data_string(settings, key)
+            title = _source_setting_to_title(value, key)
+            if title:
+                return title
+    except Exception as error:
+        _log("Could not read OBS source title settings: %s" % error)
+    finally:
+        if settings and hasattr(obs, "obs_data_release"):
+            try:
+                obs.obs_data_release(settings)
+            except Exception:
+                pass
+    return None
+
+
+def _obs_data_string(settings, key):
+    if obs and settings and hasattr(obs, "obs_data_get_string"):
+        try:
+            return obs.obs_data_get_string(settings, key)
+        except Exception:
+            return None
+    return None
+
+
+def _source_setting_to_title(value, key):
+    text = _clean_text(_decode_obs_setting_value(value))
+    if not text:
+        return None
+    if key == "window":
+        text = _window_setting_to_title(text)
+    if key == "executable":
+        text = Path(text).stem
+    return _clean_text(text)
+
+
+def _decode_obs_setting_value(value):
+    if value is None:
+        return None
+    text = unquote(str(value))
+    return re.sub(
+        r"#(?:3a|22)",
+        lambda match: ":" if match.group(0).lower() == "#3a" else "#",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def _window_setting_to_title(value):
+    text = _clean_text(value)
+    if not text:
+        return None
+    match = re.match(r"^\[[^\]]+\]:\s*(.+)$", text)
+    if match:
+        return _clean_text(match.group(1))
+    if text.count(":") >= 2:
+        return _clean_text(text.rsplit(":", 2)[0])
+    return text
 
 
 def _set_backend_status(value):

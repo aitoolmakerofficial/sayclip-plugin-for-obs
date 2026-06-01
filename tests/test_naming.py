@@ -12,6 +12,11 @@ def test_sanitizer_keeps_unicode() -> None:
     assert sanitize_slug("Чистый обгон") == "чистый-обгон"
 
 
+def test_sanitizer_decodes_percent_encoded_title_chars() -> None:
+    assert sanitize_slug("Honkai%3A Star Rail") == "honkai-star-rail"
+    assert sanitize_slug("Honkai%3A%20Star%20Rail") == "honkai-star-rail"
+
+
 def test_formatter_acceptance_example() -> None:
     filename = format_filename(
         game="Forza Horizon 6",
