@@ -19,6 +19,8 @@ from .stt import FakeSpeechToTextEngine
 
 logger = logging.getLogger(__name__)
 
+STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
+
 
 def _set_windows_app_user_model_id(app_id: str) -> None:
     if sys.platform != "win32":
@@ -287,8 +289,8 @@ def run_ui(api: BackendApi, server: Any) -> int:
             plugin_actions = QWidget()
             plugin_layout = QGridLayout(plugin_actions)
             plugin_layout.setContentsMargins(0, 0, 0, 0)
-            self.open_streamdeck_folder_button = QPushButton("Open Stream Deck plugin folder")
-            plugin_layout.addWidget(self.open_streamdeck_folder_button, 0, 0)
+            self.open_streamdeck_repository_button = QPushButton("Open Stream Deck plugin repository")
+            plugin_layout.addWidget(self.open_streamdeck_repository_button, 0, 0)
             plugin_layout.setColumnStretch(1, 1)
 
             self.layout.addLayout(header)
@@ -376,7 +378,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.additional_setup_card = AdditionalSetupCard()
             self.additional_setup_card.copy_dock_url_button.clicked.connect(self.copy_dock_url)
             self.additional_setup_card.open_dock_button.clicked.connect(self.open_dock)
-            self.additional_setup_card.open_streamdeck_folder_button.clicked.connect(self.open_streamdeck_folder)
+            self.additional_setup_card.open_streamdeck_repository_button.clicked.connect(self.open_streamdeck_repository)
             self.additional_setup_card.hide_button.clicked.connect(self.hide_additional_setup)
             show_additional_setup = bool(api.config.data.get("ui", {}).get("show_additional_setup", True))
             self.additional_setup_card.setVisible(show_additional_setup)
@@ -484,12 +486,8 @@ def run_ui(api: BackendApi, server: Any) -> int:
         def open_dock(self) -> None:
             os.startfile(_dock_url(api.config))
 
-        def open_streamdeck_folder(self) -> None:
-            folder = api.config.root / "src" / "stream_deck_module" / "easy-rename-stream-plugin"
-            if not folder.exists():
-                QMessageBox.warning(self, "Stream Deck plugin", "Stream Deck plugin folder was not found.")
-                return
-            os.startfile(folder)
+        def open_streamdeck_repository(self) -> None:
+            os.startfile(STREAMDECK_PLUGIN_REPOSITORY_URL)
 
         def open_row_folder(self, row: int, column: int) -> None:
             del column

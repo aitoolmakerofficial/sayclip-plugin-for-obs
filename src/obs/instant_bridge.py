@@ -20,6 +20,7 @@ APP_NAME = "SayClip"
 APP_VERSION = "0.1.0"
 YOUTUBE_GUIDE_URL = "https://www.youtube.com/@WorkingAiTools"
 OBS_DOCK_URL = "http://127.0.0.1:17891/dock"
+STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
 DEFAULT_CONFIG = {
     "backend": {
         "host": "127.0.0.1",
@@ -57,7 +58,8 @@ def script_description():
     return (
         "<h4>SayClip app</h4>"
         f"YouTube guide: <a href='{YOUTUBE_GUIDE_URL}'>open guide</a>.<br>"
-        f"OBS dock: <a href='{OBS_DOCK_URL}'>open dock</a>."
+        f"OBS dock: <a href='{OBS_DOCK_URL}'>open dock</a>.<br>"
+        f"Stream Deck plugin: <a href='{STREAMDECK_PLUGIN_REPOSITORY_URL}'>open repository</a>."
     )
 
 
