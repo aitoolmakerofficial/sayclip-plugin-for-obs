@@ -1,0 +1,68 @@
+[app]
+name = "Instant Easy Rename"
+version = "0.1.0"
+
+[backend]
+host = "127.0.0.1"
+port = 17891
+start_mode = "on_obs_start"
+
+[backend.process]
+python_path = ".venv/Scripts/pythonw.exe"
+module = "instant_easy_rename_server"
+
+[obs]
+prefer_source_title = true
+fallback_to_parent_folder = true
+
+[setup]
+completed = false
+dependencies_installed = false
+python_path = ""
+venv_path = ""
+completed_at = ""
+
+[naming]
+format = "{source}__{datetime}__{title}"
+datetime_format = "%Y-%m-%d_%H-%M-%S"
+include_job_type = true
+unknown_game_token = "unknown-game"
+title_language_mode = "keep"
+keep_extension = true
+on_conflict = "increment"
+
+[naming.job_type_tokens]
+recording = "rec"
+moment = "mom"
+
+[jobs]
+max_jobs_in_ui = 50
+
+[audio]
+device = "default"
+max_record_seconds = 8
+silence_stop_enabled = true
+silence_seconds = 5
+beep_start = true
+beep_end = true
+show_level_meter = true
+keep_temp_audio = false
+
+[stt]
+engine = "faster_whisper"
+model_path = ""
+device = "cpu"
+compute_type = "int8"
+language = "ru"
+offline_only = true
+fake_transcript = "test voice title"
+
+[logging]
+log_path = "logs/instant_easy_rename_server.log"
+level = "INFO"
+
+[ui]
+theme = "dark"
+show_mic_meter = true
+show_jobs_table = true
+show_additional_setup = true

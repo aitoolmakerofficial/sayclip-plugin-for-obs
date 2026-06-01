@@ -1,0 +1,23 @@
+[project]
+name = "instant-easy-rename"
+version = "0.1.0"
+description = "Local backend skeleton for Instant Easy Rename."
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6==6.11.1",
+  "faster-whisper==1.2.1",
+  "sounddevice==0.5.5",
+  "soundfile==0.13.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.uv]
+package = false
