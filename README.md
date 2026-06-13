@@ -2,6 +2,132 @@
 
 Local OBS companion tool for voice-titled recording and replay-buffer renames.
 
+SayClip runs on your machine. The OBS bridge, backend UI, browser dock, audio
+recording, speech recognition, and file rename flow are designed for local use.
+The backend listens on localhost only by default:
+
+```text
+http://127.0.0.1:17891
+```
+
+## Video Guide
+
+Installation and usage videos are published through the official AI Toolmaker
+YouTube channel:
+
+```text
+https://www.youtube.com/@WorkingAiTools
+```
+
+Use the official repository and official video links when installing SayClip.
+Do not download modified installers or model links from random mirrors unless
+you have reviewed and trust them.
+
+## Quick Install Path
+
+1. Download or clone the official SayClip repository.
+2. Open OBS.
+3. Go to Tools -> Scripts.
+4. Add `SayClip_Starter.py`.
+5. SayClip Onboarding opens from the OBS script when setup is missing.
+6. Follow SayClip Onboarding step by step.
+7. Add the OBS dock at `http://127.0.0.1:17891/dock` if you want the browser
+   panel inside OBS.
+
+SayClip Onboarding creates a `.venv` folder inside this project and installs
+Python dependencies there. It does not modify your system Python packages.
+
+## Local Speech Recognition
+
+SayClip uses speech recognition to turn your spoken title into the final file
+name. Recognition is local at runtime: audio is recorded locally, temporary
+audio stays on your machine, and the configured Faster Whisper model is loaded
+from a local folder.
+
+To recognize speech locally, SayClip needs a recognition model on disk. The
+onboarding installer can download one of these Faster Whisper model folders:
+
+- Fastest: `Systran/faster-whisper-tiny`
+  `https://huggingface.co/Systran/faster-whisper-tiny`
+- Balanced: `Systran/faster-whisper-small`
+  `https://huggingface.co/Systran/faster-whisper-small`
+
+Downloaded models are saved under this project folder:
+
+```text
+models\faster-whisper-tiny
+models\faster-whisper-small
+```
+
+The model download comes from Hugging Face, which is a third-party source.
+Review the shown link before continuing. SayClip does not control third-party
+files, hosting, availability, or future changes to those pages.
+
+You can also skip the download and choose an existing local Faster Whisper model
+folder. A valid folder should contain at least `config.json`, `model.bin`, and
+`tokenizer.json` or `vocabulary.txt`.
+
+## Speech Language
+
+The speech language setting tells Faster Whisper what language to expect for
+your voice titles. The UI lists common choices:
+
+- `en` for English
+- `zh` for Chinese
+- `es` for Spanish
+- `fr` for French
+- `de` for German
+- `ja` for Japanese
+- `ru` for Russian
+
+Other Faster Whisper/Whisper language codes can be typed manually.
+
+## Rename Format
+
+The rename format controls how SayClip builds the new recording or replay file
+name. The spoken title is always sanitized for Windows filenames.
+
+Supported variables:
+
+- `{title}`: recognized spoken title. This is required for voice naming.
+- `{datetime}`: clip or recording time formatted with `datetime_format`.
+- `{source}`: OBS/game/source title resolved by the OBS bridge.
+- `{job_type}`: short action type, `rec` for recording or `mom` for replay
+  buffer moment.
+- `{game}`: legacy alias for the source/game value.
+
+Built-in presets:
+
+- Spoken title only:
+  `{title}` -> `clean-overtake.mkv`
+- Time + spoken title:
+  `{datetime}__{title}` -> `2026-05-27_22-10-44__clean-overtake.mkv`
+- Source + time + spoken title:
+  `{source}__{datetime}__{title}` ->
+  `forza-horizon-6__2026-05-27_22-10-44__clean-overtake.mkv`
+- Source + clip type + time + spoken title:
+  `{source}__{job_type}__{datetime}__{title}` ->
+  `forza-horizon-6__mom__2026-05-27_22-10-44__clean-overtake.mkv`
+
+Custom formats must include `{title}`. Without it, the recognized voice title
+has nowhere to go.
+
+## Date And Time Format
+
+`datetime_format` uses Python `strftime` patterns. It is only used when your
+rename format contains `{datetime}`.
+
+Common patterns:
+
+- `%Y-%m-%d_%H-%M-%S` -> `2026-05-27_22-10-44`
+- `%Y%m%d_%H%M%S` -> `20260527_221044`
+- `%Y-%m-%d` -> `2026-05-27`
+- `%H-%M-%S` -> `22-10-44`
+
+Avoid characters that Windows does not allow in filenames, such as `:`, `?`,
+`*`, `<`, `>`, `|`, and quotes. SayClip sanitizes invalid filename characters,
+but readable patterns are easier to debug.
+
 ## Stream Deck Plugin
 
 SayClip has planned first-class Stream Deck support that does not use hotkeys.
@@ -21,19 +147,6 @@ v1 actions:
 - MOM: save replay buffer moment.
 - REC: stop active recording and rename it.
 - STATUS: show backend state.
-
-Build from the Stream Deck plugin folder:
-
-```bat
-cd src\stream_deck_module\easy-rename-stream-plugin
-npm install
-npm run build
-npm run pack
-```
-
-Do not install `@elgato/cli` globally. The plugin project must use local npm dependencies through `npm run ...` scripts or local `npx` commands.
-
-Install by opening the generated `.streamDeckPlugin` file, or by using the `Install Stream Deck Plugin` action in the app after the package has been built.
 
 ## OBS Script
 

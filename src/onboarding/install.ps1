@@ -54,6 +54,37 @@ function Write-Muted($Text) {
     Write-Host $Text -ForegroundColor DarkGray
 }
 
+function Write-FilenameFormatReference {
+    Write-Host "Rename format variables:"
+    Write-Muted "  {title}    recognized spoken title; required"
+    Write-Muted "  {datetime} clip/recording time, formatted by the date/time pattern"
+    Write-Muted "  {source}   OBS/game/source title when available"
+    Write-Muted "  {job_type} rec for recording, mom for replay buffer moment"
+    Write-Muted "  {game}     legacy alias for source/game"
+    Write-Host ""
+    Write-Host "Date/time pattern examples:"
+    Write-Muted "  %Y-%m-%d_%H-%M-%S -> 2026-05-27_22-10-44"
+    Write-Muted "  %Y%m%d_%H%M%S     -> 20260527_221044"
+    Write-Muted "  %Y-%m-%d          -> 2026-05-27"
+    Write-Muted "  %H-%M-%S          -> 22-10-44"
+    Write-Host ""
+}
+
+function Write-SpeechModelExplanation {
+    Write-Host "SayClip recognizes your spoken title locally at runtime."
+    Write-Host "For local recognition, Faster Whisper needs a model folder on this machine."
+    Write-Host ""
+    Write-Host "The installer can download a model from Hugging Face, or you can choose an existing local model folder."
+    Write-Host "Downloads are saved inside this project under:"
+    Write-Muted "  models\faster-whisper-tiny"
+    Write-Muted "  models\faster-whisper-small"
+    Write-Host ""
+    Write-Host "Third-party download notice:"
+    Write-Muted "  Review the shown Hugging Face link before downloading."
+    Write-Muted "  $ProductName does not control third-party files, hosting, or future page changes."
+    Write-Host ""
+}
+
 function New-ProgressBar($Step) {
     $width = 18
     if ($Step -le 0) {
@@ -88,6 +119,15 @@ function Read-Choice($Prompt, [string[]] $Allowed) {
             return $value
         }
         Write-Host "Please choose one of: $($Allowed -join ', ')" -ForegroundColor Yellow
+    }
+}
+
+function Confirm-Continue($Prompt = "Continue?") {
+    Write-Option 1 "Continue"
+    Write-Option 2 "Cancel setup"
+    $choice = Read-Choice $Prompt @("1", "2")
+    if ($choice -eq "2") {
+        exit 1
     }
 }
 
@@ -188,7 +228,7 @@ function Enter-InstallerMutex {
     if (-not $createdNew) {
         Write-Host ""
         Write-Host "Setup is already running in another window." -ForegroundColor Yellow
-        Write-Host "Finish that setup window, or close it and run install.bat again."
+        Write-Host "Finish that setup window, or close it and reopen SayClip_Starter.py in OBS Scripts."
         Write-Host ""
         Read-Host "Press Enter to close this window"
         exit 0
@@ -266,14 +306,24 @@ function Select-Microphone {
 function Select-Language {
     Show-SetupHeader 4 "Voice and file names" "Speech language"
     Write-Host "What language will the speaker use for voice titles?"
-    Write-Host "[1] Russian (ru)"
-    Write-Host "[2] English (en)"
-    Write-Host "[3] Type another language code"
-    $choice = Read-Choice "Choose language" @("1", "2", "3")
-    if ($choice -eq "1") { return "ru" }
-    if ($choice -eq "2") { return "en" }
+    Write-Host "[1] English (en)"
+    Write-Host "[2] Chinese (zh)"
+    Write-Host "[3] Spanish (es)"
+    Write-Host "[4] French (fr)"
+    Write-Host "[5] German (de)"
+    Write-Host "[6] Japanese (ja)"
+    Write-Host "[7] Russian (ru)"
+    Write-Host "[8] Type another Faster Whisper language code"
+    $choice = Read-Choice "Choose language" @("1", "2", "3", "4", "5", "6", "7", "8")
+    if ($choice -eq "1") { return "en" }
+    if ($choice -eq "2") { return "zh" }
+    if ($choice -eq "3") { return "es" }
+    if ($choice -eq "4") { return "fr" }
+    if ($choice -eq "5") { return "de" }
+    if ($choice -eq "6") { return "ja" }
+    if ($choice -eq "7") { return "ru" }
     while ($true) {
-        $language = (Read-Host "Type a Faster Whisper language code, for example ru, en, uk, de").Trim()
+        $language = (Read-Host "Type a Faster Whisper language code, for example en, zh, es, fr, de, ja, ru").Trim()
         if ($language -match "^[A-Za-z][A-Za-z0-9_-]{0,15}$") {
             return $language.ToLowerInvariant()
         }
@@ -317,6 +367,8 @@ function Select-FilenameFormat {
     Write-Host "Choose what the renamed file should include."
     Write-Muted "Examples use source Forza Horizon 6, clip type moment, and spoken title clean overtake."
     Write-Host ""
+    Write-FilenameFormatReference
+    Write-Host ""
     Write-Option 1 "Spoken title only"
     Write-Muted "    clean-overtake"
     Write-Option 2 "Time + spoken title"
@@ -331,7 +383,11 @@ function Select-FilenameFormat {
     if ($choice -eq "2") { return "{datetime}__{title}" }
     if ($choice -eq "3") { return "{source}__{datetime}__{title}" }
     if ($choice -eq "4") { return "{source}__{job_type}__{datetime}__{title}" }
-    Write-Muted "Available tokens: {source}, {job_type}, {datetime}, {title}. Legacy {game} still works as an alias."
+    Write-Host ""
+    Write-Host "Custom format rules:"
+    Write-Muted "  Include {title}; otherwise the recognized voice title has nowhere to go."
+    Write-Muted "  Use __ or - between variables to keep filenames readable."
+    Write-Muted "  Avoid Windows-forbidden characters like :, ?, *, <, >, |, and quotes."
     while ($true) {
         $format = (Read-Host "Enter format").Trim()
         if ($format -match "\{title\}") {
@@ -400,7 +456,7 @@ if (-not $python) {
     Write-Host "Please install Python 3.11+ from:"
     Write-Host "https://www.python.org/downloads/windows/"
     Write-Host ""
-    Write-Host "Then run install.bat again."
+    Write-Host "Then reopen SayClip_Starter.py in OBS Scripts."
     exit 1
 }
 
@@ -428,11 +484,25 @@ if ($choice -eq "2") {
 Update-AppConfig "" "default" "ru" "{source}__{datetime}__{title}" $python.Path $false $false
 
 Show-SetupHeader 2 "Local environment"
-Write-Host "Setup will create a local environment here:"
-Write-Host $VenvPath
-Write-Host ""
-Write-Host "Your system Python will not be modified."
-Write-Host "Dependencies will be installed only inside this project folder."
+if (Test-Path $VenvPath) {
+    Write-Host "Local environment folder found:"
+    Write-Host $VenvPath
+    Write-Host ""
+    Write-Host "This step is already completed." -ForegroundColor Green
+    Write-Host "Your system Python was not modified."
+    Write-Host ""
+    Confirm-Continue "Continue to dependency check"
+} else {
+    Write-Host "Setup will create a local environment here:"
+    Write-Host $VenvPath
+    Write-Host ""
+    Write-Host "Your system Python will not be modified."
+    Write-Host "Dependencies will be installed only inside this project folder."
+    Write-Host ""
+}
+
+Show-SetupHeader 3 "Dependencies"
+Write-Host "SayClip needs these local Python packages for the backend UI, audio capture, speech recognition, and tests."
 Write-Host ""
 $dependencies = Read-Dependencies
 Write-Host "Dependencies from pyproject.toml:"
@@ -444,9 +514,10 @@ $dependenciesInstalled = Test-DependenciesInstalled
 $installDependenciesRequested = $false
 if ((Test-Path $VenvPath) -and $dependenciesInstalled) {
     Write-Host ""
-    Write-Host "Local environment already exists."
-    Write-Host "Dependencies look installed."
-    Write-Host "Continuing to voice setup."
+    Write-Host "Dependencies look installed in the local environment." -ForegroundColor Green
+    Write-Host "No dependency installation is needed on this run."
+    Write-Host ""
+    Confirm-Continue "Continue to voice settings"
 } else {
     Write-Host ""
     Write-Host "Install these dependencies locally?"
@@ -470,7 +541,7 @@ if (-not (Test-Path $VenvPython)) {
 if ((-not $dependenciesInstalled) -and (-not $installDependenciesRequested)) {
     Write-Host ""
     Write-Host "Dependencies are not installed yet."
-    Write-Host "Install them into this local environment, then run install.bat again:"
+    Write-Host "Install them into this local environment, then reopen SayClip_Starter.py in OBS Scripts:"
     Write-Host $VenvPath
     exit 1
 }
@@ -480,17 +551,22 @@ if (-not $dependenciesInstalled) {
     Invoke-Checked "Upgrading local pip" { & $VenvPython -m pip install --upgrade pip }
     Invoke-Checked "Installing local dependencies" { & $VenvPython -m pip install -e ".[dev]" }
     $dependenciesInstalled = Test-DependenciesInstalled
+    Show-SetupHeader 3 "Dependencies" "Installed"
+    Write-Host "Dependencies were installed into the local environment." -ForegroundColor Green
+    Write-Host $VenvPath
+    Write-Host ""
 }
 
 $audioDevice = Select-Microphone
 Update-AppConfig "" $audioDevice "ru" "{source}__{datetime}__{title}" $python.Path $dependenciesInstalled $false
+
 $language = Select-Language
+
 $filenameFormat = Select-FilenameFormat
 Update-AppConfig "" $audioDevice $language $filenameFormat $python.Path $dependenciesInstalled $false
 
 Show-SetupHeader 5 "Speech model"
-Write-Host "Faster Whisper needs a speech recognition model."
-Write-Host ""
+Write-SpeechModelExplanation
 $downloadedModels = @($ModelCatalog | Where-Object { Test-FasterWhisperModelFolder $_.Path })
 if ($downloadedModels.Count -gt 0) {
     Write-Host "A Faster Whisper model already exists in this project."
@@ -537,14 +613,15 @@ if (-not (Get-Variable -Name modelPath -ErrorAction SilentlyContinue)) {
 if ($modelChoice -eq "download") {
     $selectedModel = Select-ModelFromCatalog "Which speed/quality profile should be downloaded?"
     Write-Host ""
-    Write-Host "The model will be downloaded from:"
+    Write-Host "The selected model will be downloaded from:"
     Write-Host $selectedModel.Url -ForegroundColor Cyan
+    Write-Muted "Repository: $($selectedModel.Repo)"
     Write-Host ""
     Write-Host "It will be saved to:"
     Write-Host $selectedModel.Path
     Write-Host ""
-    Write-Host "This is an external source. Please review the link before continuing."
-    Write-Host "$ProductName does not control third-party files or hosting."
+    Write-Host "Please review the link above before continuing."
+    Write-Host "$ProductName does not control third-party files, hosting, availability, or future page changes."
     Write-Host ""
     Write-Host "Download this model now?"
     Write-Option 1 "Yes"

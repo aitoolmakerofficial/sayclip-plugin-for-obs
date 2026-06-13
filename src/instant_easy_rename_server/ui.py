@@ -63,7 +63,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             QWidget,
         )
     except ModuleNotFoundError as error:
-        raise SystemExit("PySide6 is not installed. Run install.bat, then start.bat again.") from error
+        raise SystemExit("PySide6 is not installed. Reopen SayClip_Starter.py in OBS Scripts to run setup.") from error
 
     class Card(QFrame):
         def __init__(self) -> None:
@@ -677,9 +677,12 @@ def run_ui(api: BackendApi, server: Any) -> int:
             form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
             self.engine = QComboBox()
-            self.engine.addItems(["fake", "faster_whisper"])
-            self.engine.setCurrentText(str(api.config.stt.get("engine", "fake")))
-            form.addRow("STT engine", self.engine)
+            current_engine = str(api.config.stt.get("engine", "faster_whisper"))
+            self.engine.addItem("Local Faster Whisper", "faster_whisper")
+            if current_engine == "fake":
+                self.engine.addItem("Test mode (fake transcript)", "fake")
+            self.engine.setCurrentIndex(max(0, self.engine.findData(current_engine)))
+            form.addRow("Speech recognition", self.engine)
 
             model_row = QWidget()
             model_layout = QGridLayout(model_row)
@@ -690,10 +693,31 @@ def run_ui(api: BackendApi, server: Any) -> int:
             browse_model.clicked.connect(self.choose_model_path)
             model_layout.addWidget(self.model_path, 0, 0)
             model_layout.addWidget(browse_model, 0, 1)
-            form.addRow("Model path", model_row)
+            form.addRow("Recognition model folder", model_row)
 
-            self.language = QLineEdit(str(api.config.stt.get("language", "ru")))
-            form.addRow("Language", self.language)
+            model_help = QLabel("Local Faster Whisper model folder, for example models/faster-whisper-tiny.")
+            model_help.setObjectName("Muted")
+            model_help.setWordWrap(True)
+            form.addRow("", model_help)
+
+            self.language = QComboBox()
+            self.language.setEditable(True)
+            language_options = [
+                ("English (en)", "en"),
+                ("Chinese (zh)", "zh"),
+                ("Spanish (es)", "es"),
+                ("French (fr)", "fr"),
+                ("German (de)", "de"),
+                ("Japanese (ja)", "ja"),
+                ("Russian (ru)", "ru"),
+            ]
+            current_language = str(api.config.stt.get("language", "ru"))
+            for label, value in language_options:
+                self.language.addItem(label, value)
+            if current_language not in [value for _, value in language_options]:
+                self.language.addItem(current_language, current_language)
+            self.language.setCurrentIndex(max(0, self.language.findData(current_language)))
+            form.addRow("Speech language", self.language)
 
             self.filename_format = QComboBox()
             filename_format_options = [
@@ -718,9 +742,21 @@ def run_ui(api: BackendApi, server: Any) -> int:
                 max(0, self.filename_format.findData(current_filename_format))
             )
             form.addRow("Rename format", self.filename_format)
+            self.filename_format.currentIndexChanged.connect(self.update_filename_preview)
+
+            self.filename_preview = QLabel("")
+            self.filename_preview.setObjectName("Muted")
+            self.filename_preview.setWordWrap(True)
+            form.addRow("", self.filename_preview)
 
             self.datetime_format = QLineEdit(str(api.config.naming.get("datetime_format", "%Y-%m-%d_%H-%M-%S")))
-            form.addRow("Time format", self.datetime_format)
+            self.datetime_format.textChanged.connect(self.update_filename_preview)
+            form.addRow("Date/time pattern", self.datetime_format)
+
+            datetime_help = QLabel("Used only when rename format contains {datetime}. Example: %Y-%m-%d_%H-%M-%S -> 2026-05-27_22-10-44.")
+            datetime_help.setObjectName("Muted")
+            datetime_help.setWordWrap(True)
+            form.addRow("", datetime_help)
 
             audio_row = QWidget()
             audio_layout = QGridLayout(audio_row)
@@ -736,6 +772,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             form.addRow("Microphone", audio_row)
 
             layout.addLayout(form)
+            self.update_filename_preview()
 
             buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
             buttons.accepted.connect(self.accept)
@@ -756,10 +793,39 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.audio_device.addItems(list_input_devices())
             self.audio_device.setCurrentText(selected)
 
+        def update_filename_preview(self) -> None:
+            template = str(self.filename_format.currentData() or "{title}")
+            datetime_pattern = self.datetime_format.text().strip() or "%Y-%m-%d_%H-%M-%S"
+            sample_datetime = "2026-05-27_22-10-44"
+            if datetime_pattern == "%Y%m%d_%H%M%S":
+                sample_datetime = "20260527_221044"
+            elif datetime_pattern == "%Y-%m-%d":
+                sample_datetime = "2026-05-27"
+            elif datetime_pattern == "%H-%M-%S":
+                sample_datetime = "22-10-44"
+            sample = (
+                template.replace("{source}", "forza-horizon-6")
+                .replace("{game}", "forza-horizon-6")
+                .replace("{job_type}", "mom")
+                .replace("{datetime}", sample_datetime)
+                .replace("{title}", "clean-overtake")
+            )
+            self.filename_preview.setText(
+                "Variables: {title} required, {datetime}, {source}, {job_type}. Preview: "
+                f"{sample}.mkv"
+            )
+
+        def selected_language_value(self) -> str:
+            text = self.language.currentText().strip()
+            for index in range(self.language.count()):
+                if text == self.language.itemText(index):
+                    return str(self.language.itemData(index) or text).strip()
+            return text
+
         def apply(self) -> None:
-            api.config.data["stt"]["engine"] = self.engine.currentText().strip()
+            api.config.data["stt"]["engine"] = str(self.engine.currentData() or "faster_whisper")
             api.config.data["stt"]["model_path"] = self.model_path.text().strip()
-            api.config.data["stt"]["language"] = self.language.text().strip()
+            api.config.data["stt"]["language"] = self.selected_language_value()
             api.config.data["naming"]["format"] = str(self.filename_format.currentData() or "{title}")
             api.config.data["naming"]["datetime_format"] = self.datetime_format.text().strip() or "%Y-%m-%d_%H-%M-%S"
             api.config.data["audio"]["device"] = self.audio_device.currentText().strip() or "default"
