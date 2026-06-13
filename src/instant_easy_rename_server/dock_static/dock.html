@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SayClip</title>
+    <link rel="stylesheet" href="/dock/static/dock.css">
+  </head>
+  <body>
+    <main class="app" aria-live="polite">
+      <section id="healthBanner" class="health-banner error" hidden>
+        <strong id="healthTitle">API OFFLINE</strong>
+        <span id="healthText">Dock cannot reach backend state endpoint.</span>
+      </section>
+
+      <section class="actions" aria-label="OBS actions">
+        <button id="saveMoment" class="action-button action-button--moment" type="button">
+          <span class="button-icon" data-icon="save-moment" aria-hidden="true"></span>
+          <span class="button-copy">
+            <span class="button-label">SAVE CLIP</span>
+            <span class="button-subtitle">Legendary moment</span>
+          </span>
+        </button>
+        <button id="saveRecording" class="action-button action-button--record" type="button">
+          <span class="button-icon" data-icon="save-recording" aria-hidden="true"></span>
+          <span class="button-copy">
+            <span class="button-label">SAVE RECORDING</span>
+            <span class="button-subtitle">Full recording</span>
+          </span>
+        </button>
+      </section>
+
+      <section id="statusPanel" class="status-panel status-panel--ready">
+        <div class="status-head">
+          <span id="statusIcon" class="status-icon" data-icon="ready" aria-hidden="true"></span>
+          <div class="status-copy">
+            <div class="status-row">
+              <span id="statusChip" class="chip ready">READY</span>
+              <span id="statusTitle" class="status-title"></span>
+            </div>
+            <p id="statusSubtitle" class="status-subtitle"></p>
+          </div>
+        </div>
+
+        <div id="voiceBlock" class="voice-block" hidden>
+          <div class="meter-row">
+            <span class="meter-label">Mic</span>
+            <div id="micMeterTrack" class="meter" role="meter" aria-label="Voice capture time remaining" aria-valuemin="0" aria-valuemax="100">
+              <div id="micMeter" class="meter-bar"></div>
+              <div id="micPeak" class="meter-peak"></div>
+            </div>
+            <span id="meterValue" class="meter-value">0%</span>
+          </div>
+        </div>
+      </section>
+
+      <p id="actionMessage" class="action-message" hidden></p>
+
+      <section class="latest-result" aria-label="Latest output">
+        <div class="result-top">
+          <span id="jobType" class="chip offline">LATEST</span>
+          <span id="jobGame" class="latest-game"></span>
+          <span id="jobTranscript" class="latest-title">No recent output</span>
+          <button id="openFolder" class="primary-button" type="button" hidden>Open</button>
+        </div>
+        <p id="jobOutput" class="filename"></p>
+        <p id="jobError" class="error-text"></p>
+      </section>
+
+      <section id="micRow" class="mic-row" hidden>
+        <span id="micChip" class="mic-state">Mic ready</span>
+        <span id="micDevice" class="mic-device">default</span>
+      </section>
+    </main>
+    <script src="/dock/static/dock.js"></script>
+  </body>
+</html>
