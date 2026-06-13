@@ -1,23 +1,22 @@
 # SayClip
 
-Local OBS companion tool for voice-titled recording and replay-buffer renames.
+![SayClip GitHub cover](public/sayclip-github-cover.png)
+
+SayClip is a local OBS companion tool for voice-titled recording and
+replay-buffer renames.
 
 SayClip runs on your machine. The OBS bridge, backend UI, browser dock, audio
 recording, speech recognition, and file rename flow are designed for local use.
 The backend listens on localhost only by default:
 
-```text
 http://127.0.0.1:17891
-```
 
 ## Video Guide
 
 Installation and usage videos are published through the official AI Toolmaker
 YouTube channel:
 
-```text
 https://www.youtube.com/@WorkingAiTools
-```
 
 Use the official repository and official video links when installing SayClip.
 Do not download modified installers or model links from random mirrors unless
