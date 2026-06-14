@@ -211,7 +211,7 @@ def test_job_for_ui_returns_latest_job_shape(tmp_path: Path) -> None:
     api.create_job({"type": "moment", "original_path": str(original_path), "source_title": "Forza Horizon 6"})
     job = api.job_for_ui(api.list_jobs()["jobs"][0])
 
-    assert job["type"] == "mom"
+    assert job["type"] == "clip"
     assert job["game"] == "forza-horizon-6"
     assert job["status"] == "done"
     assert job["output_filename"].endswith(".mkv")

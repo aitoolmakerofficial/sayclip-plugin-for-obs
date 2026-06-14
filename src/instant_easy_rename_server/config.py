@@ -36,7 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "title_language_mode": "keep",
         "keep_extension": True,
         "on_conflict": "increment",
-        "job_type_tokens": {"recording": "rec", "moment": "mom"},
+        "job_type_tokens": {"recording": "rec", "moment": "clip"},
     },
     "jobs": {
         "max_jobs_in_ui": 50,

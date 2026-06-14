@@ -91,7 +91,7 @@ Supported variables:
 - `{title}`: recognized spoken title. This is required for voice naming.
 - `{datetime}`: clip or recording time formatted with `datetime_format`.
 - `{source}`: OBS/game/source title resolved by the OBS bridge.
-- `{job_type}`: short action type, `rec` for recording or `mom` for replay
+- `{job_type}`: short action type, `rec` for recording or `clip` for replay
   buffer moment.
 - `{game}`: legacy alias for the source/game value.
 
@@ -106,7 +106,7 @@ Built-in presets:
   `forza-horizon-6__2026-05-27_22-10-44__clean-overtake.mkv`
 - Source + clip type + time + spoken title:
   `{source}__{job_type}__{datetime}__{title}` ->
-  `forza-horizon-6__mom__2026-05-27_22-10-44__clean-overtake.mkv`
+  `forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake.mkv`
 
 Custom formats must include `{title}`. Without it, the recognized voice title
 has nowhere to go.
@@ -143,7 +143,7 @@ PySide, OBS dock, and Stream Deck should all use the same backend save/status co
 
 v1 actions:
 
-- MOM: save replay buffer moment.
+- CLIP: save replay buffer moment.
 - REC: stop active recording and rename it.
 - STATUS: show backend state.
 

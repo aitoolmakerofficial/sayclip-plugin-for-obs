@@ -45,7 +45,7 @@ class FakeSpeechToTextEngine:
         self.transcript = transcript
 
     def transcribe(self, audio: AudioPayload, *, language: str | None = None) -> TranscriptionResult:
-        logger.info("Fake STT transcribe: language=%s transcript=%r", language, self.transcript)
+        logger.debug("Fake STT transcribe: language=%s transcript=%r", language, self.transcript)
         return TranscriptionResult(text=self.transcript, language=language)
 
     def is_ready(self) -> bool:
@@ -64,7 +64,7 @@ class FasterWhisperTinyCpuEngine:
         self._model: Any | None = None
 
     def transcribe(self, audio: AudioPayload, *, language: str | None = None) -> TranscriptionResult:
-        logger.info(
+        logger.debug(
             "faster-whisper transcribe starting: model_path=%s device=%s compute_type=%s language=%s audio_path=%s audio_bytes=%s",
             self.model_path,
             self.device,
@@ -93,7 +93,7 @@ class FasterWhisperTinyCpuEngine:
         if audio.path:
             segments, info = model.transcribe(str(audio.path), language=language)
             result = _segments_to_result(segments, info)
-            logger.info("faster-whisper transcribe completed: text=%r language=%s confidence=%s", result.text, result.language, result.confidence)
+            logger.debug("faster-whisper transcribe completed: text=%r language=%s confidence=%s", result.text, result.language, result.confidence)
             return result
 
         suffix = f".{audio.format.lstrip('.') or 'wav'}"
@@ -102,7 +102,7 @@ class FasterWhisperTinyCpuEngine:
         try:
             segments, info = model.transcribe(str(temp_path), language=language)
             result = _segments_to_result(segments, info)
-            logger.info("faster-whisper transcribe completed: text=%r language=%s confidence=%s", result.text, result.language, result.confidence)
+            logger.debug("faster-whisper transcribe completed: text=%r language=%s confidence=%s", result.text, result.language, result.confidence)
             return result
         finally:
             if not self.config.audio.get("keep_temp_audio", False):

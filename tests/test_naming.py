@@ -27,7 +27,7 @@ def test_formatter_acceptance_example() -> None:
         filename_format="{source}__{job_type}__{datetime}__{title}",
     )
 
-    assert filename == "forza-horizon-6__mom__2026-05-27_22-10-44__clean-overtake.mkv"
+    assert filename == "forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake.mkv"
 
 
 def test_formatter_uses_configurable_format() -> None:

@@ -866,6 +866,8 @@ def _run_background_callback(name, callback):
 
 
 def _log(message, *, visible=False):
+    if not visible and not _debug_logging_enabled():
+        return
     text = "[SayClip Bridge] %s" % message
     _write_bridge_log(text)
     if visible and obs and hasattr(obs, "script_log"):
@@ -876,6 +878,10 @@ def _log(message, *, visible=False):
             pass
     if visible:
         print(text)
+
+
+def _debug_logging_enabled():
+    return str(os.environ.get("SAYCLIP_DEBUG", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _write_bridge_log(text):

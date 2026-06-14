@@ -59,7 +59,7 @@ function Write-FilenameFormatReference {
     Write-Muted "  {title}    recognized spoken title; required"
     Write-Muted "  {datetime} clip/recording time, formatted by the date/time pattern"
     Write-Muted "  {source}   OBS/game/source title when available"
-    Write-Muted "  {job_type} rec for recording, mom for replay buffer moment"
+    Write-Muted "  {job_type} rec for recording, clip for replay buffer moment"
     Write-Muted "  {game}     legacy alias for source/game"
     Write-Host ""
     Write-Host "Date/time pattern examples:"
@@ -365,7 +365,7 @@ function Select-DownloadedModel($DownloadedModels) {
 function Select-FilenameFormat {
     Show-SetupHeader 4 "Voice and file names" "Rename format"
     Write-Host "Choose what the renamed file should include."
-    Write-Muted "Examples use source Forza Horizon 6, clip type moment, and spoken title clean overtake."
+    Write-Muted "Examples use source Forza Horizon 6, clip type clip, and spoken title clean overtake."
     Write-Host ""
     Write-FilenameFormatReference
     Write-Host ""
@@ -376,7 +376,7 @@ function Select-FilenameFormat {
     Write-Option 3 "Source + time + spoken title"
     Write-Muted "    forza-horizon-6__2026-05-27_22-10-44__clean-overtake"
     Write-Option 4 "Source + clip type + time + spoken title"
-    Write-Muted "    forza-horizon-6__mom__2026-05-27_22-10-44__clean-overtake"
+    Write-Muted "    forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake"
     Write-Option 5 "Custom format"
     $choice = Read-Choice "Choose format" @("1", "2", "3", "4", "5")
     if ($choice -eq "1") { return "{title}" }

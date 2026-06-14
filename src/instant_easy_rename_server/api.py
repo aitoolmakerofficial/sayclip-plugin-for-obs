@@ -110,7 +110,7 @@ class BackendApi:
         }
 
     def create_job(self, payload: dict[str, Any]) -> dict[str, str]:
-        logger.info("Create job requested: %s", payload)
+        logger.debug("Create job requested: %s", payload)
         request = JobCreateRequest.from_payload(payload)
         with self._lock:
             job = self.store.create(request)
@@ -121,14 +121,14 @@ class BackendApi:
         return {"job_id": job.id, "status": job.status}
 
     def create_job_async(self, payload: dict[str, Any]) -> dict[str, str]:
-        logger.info("Create async job requested: %s", payload)
+        logger.debug("Create async job requested: %s", payload)
         request = JobCreateRequest.from_payload(payload)
         with self._lock:
             job = self.store.create(request)
             self._mark_active_job_locked(job.id)
         thread = threading.Thread(target=self._process_voice, args=(job.id,), daemon=True)
         thread.start()
-        logger.info("Async job accepted: job_id=%s", job.id)
+        logger.debug("Async job accepted: job_id=%s", job.id)
         return {"job_id": job.id, "status": "created"}
 
     def list_jobs(self) -> dict[str, list[dict[str, Any]]]:
@@ -244,7 +244,7 @@ class BackendApi:
 
         thread = threading.Thread(target=self._process_voice_for_operation, args=(job.id, command.id), daemon=True)
         thread.start()
-        logger.info("Bridge command result created async job: command_id=%s job_id=%s", command.id, job.id)
+        logger.debug("Bridge command result created async job: command_id=%s job_id=%s", command.id, job.id)
         return {"ok": True, "job_id": job.id, "status": "created"}
 
     def record_bridge_state(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -284,14 +284,14 @@ class BackendApi:
             return {"ok": True, "accepted": True, "command_id": command.id}
 
     def request_shutdown(self) -> dict[str, Any]:
-        logger.info("Backend shutdown requested")
+        logger.debug("Backend shutdown requested")
         with self._lock:
             self.mic_level = 0.0
             self.shutdown_requested.set()
         return {"ok": True}
 
     def apply_runtime_config(self) -> None:
-        logger.info(
+        logger.debug(
             "Applying runtime config: audio.device=%s stt.engine=%s stt.model_path=%s",
             self.config.audio.get("device"),
             self.config.stt.get("engine"),
@@ -321,7 +321,7 @@ class BackendApi:
 
     def _process_voice(self, job_id: str) -> None:
         try:
-            logger.info("Voice pipeline started: job_id=%s", job_id)
+            logger.debug("Voice pipeline started: job_id=%s", job_id)
             readiness_error = self.stt_engine.readiness_error()
             if readiness_error:
                 logger.warning("Voice pipeline blocked by STT readiness: job_id=%s error=%s", job_id, readiness_error)
@@ -340,7 +340,7 @@ class BackendApi:
                 self.store.update_status(job_id, "waiting_for_voice")
                 self.store.update_status(job_id, "listening")
                 self.listening_started_at = datetime.now(timezone.utc).astimezone()
-            logger.info("Listening started: job_id=%s", job_id)
+            logger.debug("Listening started: job_id=%s", job_id)
             self.sound_player.listening_started()
             try:
                 audio = self.audio_recorder.record(on_level=self._set_mic_level)
@@ -349,13 +349,13 @@ class BackendApi:
                 self._set_mic_level(0.0)
                 with self._lock:
                     self.listening_started_at = None
-                logger.info("Listening finished: job_id=%s", job_id)
-            logger.info("Voice pipeline recorded audio: job_id=%s bytes=%s", job_id, len(audio.data or b""))
+                logger.debug("Listening finished: job_id=%s", job_id)
+            logger.debug("Voice pipeline recorded audio: job_id=%s bytes=%s", job_id, len(audio.data or b""))
             with self._lock:
                 self.store.update_status(job_id, "transcribing")
             result = self.stt_engine.transcribe(audio, language=str(self.config.stt.get("language") or "") or None)
             transcript = result.text.strip()
-            logger.info("Voice pipeline transcription completed: job_id=%s transcript=%r", job_id, transcript)
+            logger.debug("Voice pipeline transcription completed: job_id=%s transcript=%r", job_id, transcript)
             if not transcript:
                 with self._lock:
                     self.store.fail(job_id, "Speech recognition returned empty text.")
@@ -367,7 +367,7 @@ class BackendApi:
             with self._lock:
                 self.store.complete(job_id, str(final_path))
                 self._finish_active_job_locked(job_id, OperationPhase.DONE.value, None)
-            logger.info("Voice pipeline completed: job_id=%s final_path=%s", job_id, final_path)
+            logger.debug("Voice pipeline completed: job_id=%s final_path=%s", job_id, final_path)
         except (AudioRecorderError, SpeechToTextError, RenameError) as error:
             logger.exception("Voice pipeline failed: job_id=%s", job_id)
             with self._lock:

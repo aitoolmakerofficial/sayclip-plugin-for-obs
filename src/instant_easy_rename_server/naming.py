@@ -10,7 +10,7 @@ import re
 
 
 FORBIDDEN_WINDOWS_CHARS = '<>:"/\\|?*'
-JOB_TYPE_TOKENS = {"recording": "rec", "moment": "mom"}
+JOB_TYPE_TOKENS = {"recording": "rec", "moment": "clip"}
 
 
 def sanitize_slug(value: str, fallback: str = "untitled") -> str:

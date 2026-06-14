@@ -50,12 +50,12 @@ class FakeAudioRecorder:
         self.level = level
 
     def record(self, *, on_level: LevelCallback | None = None) -> AudioPayload:
-        logger.info("Fake audio recording started")
+        logger.debug("Fake audio recording started")
         if not self.available:
             raise AudioRecorderError("Microphone unavailable. SayClip cannot listen.")
         if on_level:
             on_level(self.level)
-        logger.info("Fake audio recording completed: level=%s bytes=%s", self.level, len(self.payload.data or b""))
+        logger.debug("Fake audio recording completed: level=%s bytes=%s", self.level, len(self.payload.data or b""))
         return self.payload
 
     def is_available(self) -> bool:
@@ -76,7 +76,7 @@ class DefaultMicrophoneRecorder:
         self.silence_seconds = float(config.audio.get("silence_seconds", 5))
 
     def record(self, *, on_level: LevelCallback | None = None) -> AudioPayload:
-        logger.info(
+        logger.debug(
             "Microphone recording starting: device=%s max_seconds=%s silence_enabled=%s silence_seconds=%s",
             self.device,
             self.max_record_seconds,
@@ -94,7 +94,7 @@ class DefaultMicrophoneRecorder:
 
         sample_rate = 16000
         device = None if self.device == "default" else _resolve_sounddevice_device(sd, self.device)
-        logger.info("Resolved sounddevice device: configured=%s resolved=%s", self.device, device)
+        logger.debug("Resolved sounddevice device: configured=%s resolved=%s", self.device, device)
         if device is None and self.device != "default":
             raise AudioRecorderError(f"Selected microphone was not found: {self.device}")
         try:
@@ -138,7 +138,7 @@ class DefaultMicrophoneRecorder:
         buffer = io.BytesIO()
         sf.write(buffer, recording, sample_rate, format="WAV")
         data = buffer.getvalue()
-        logger.info("Microphone recording completed: peak=%s bytes=%s", peak, len(data))
+        logger.debug("Microphone recording completed: peak=%s bytes=%s", peak, len(data))
         return AudioPayload(data=data, sample_rate=sample_rate, channels=1, format="wav")
 
     def is_available(self) -> bool:
@@ -150,13 +150,13 @@ class DefaultMicrophoneRecorder:
             import sounddevice as sd  # type: ignore[import-not-found]
             import soundfile  # noqa: F401  # type: ignore[import-not-found]
         except ModuleNotFoundError:
-            logger.exception("Audio dependencies missing during readiness check")
+            logger.debug("Audio dependencies missing during readiness check", exc_info=True)
             return "Audio recording dependencies are not installed. Run install.bat again."
         if self.device == "default":
             try:
                 sd.query_devices(kind="input")
             except Exception:
-                logger.exception("Default input microphone readiness check failed")
+                logger.debug("Default input microphone readiness check failed", exc_info=True)
                 return "No default input microphone was found."
             return None
         if not selected_audio_device_exists(self.device):
@@ -180,7 +180,7 @@ def _resolve_sounddevice_device(sounddevice: object, name: str) -> int | str | N
     try:
         devices = sounddevice.query_devices()  # type: ignore[attr-defined]
     except Exception:
-        logger.exception("Failed to query sounddevice devices")
+        logger.debug("Failed to query sounddevice devices", exc_info=True)
         return None
     selected = name.casefold()
     for index, device in enumerate(devices):
