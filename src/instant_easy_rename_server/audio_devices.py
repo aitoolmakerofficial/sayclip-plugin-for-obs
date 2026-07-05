@@ -53,7 +53,7 @@ def _sounddevice_inputs() -> list[AudioInputDevice]:
     try:
         import sounddevice as sd  # type: ignore[import-not-found]
     except Exception:
-        logger.exception("sounddevice device discovery failed during import")
+        logger.debug("sounddevice device discovery failed during import", exc_info=True)
         return []
 
     devices: list[AudioInputDevice] = []
@@ -64,7 +64,7 @@ def _sounddevice_inputs() -> list[AudioInputDevice]:
             if max_inputs > 0 and name:
                 devices.append(AudioInputDevice(name=name, source="sounddevice"))
     except Exception:
-        logger.exception("sounddevice device discovery failed")
+        logger.debug("sounddevice device discovery failed", exc_info=True)
         return []
     return devices
 
@@ -89,7 +89,7 @@ def _winmm_inputs() -> list[AudioInputDevice]:
         winmm = ctypes.WinDLL("winmm")
         count = int(winmm.waveInGetNumDevs())
     except Exception:
-        logger.exception("WinMM device discovery failed")
+        logger.debug("WinMM device discovery failed", exc_info=True)
         return []
 
     devices: list[AudioInputDevice] = []

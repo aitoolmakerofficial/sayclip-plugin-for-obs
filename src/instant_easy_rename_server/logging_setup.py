@@ -31,7 +31,7 @@ def configure_logging(config: AppConfig) -> Path:
         logging.getLogger(__name__).exception("Failed to enable fault handler")
 
     sys.excepthook = _log_uncaught_exception
-    logging.getLogger(__name__).info("Logging configured: %s", log_path)
+    logging.getLogger(__name__).debug("Logging configured: %s", log_path)
     return log_path
 
 

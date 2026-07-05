@@ -15,14 +15,20 @@ import tempfile
 import threading
 
 from .api import BackendApi
-from .audio import FakeAudioRecorder, list_input_devices
+from .audio import list_input_devices
 from .config import save_config
-from .stt import FakeSpeechToTextEngine
 
 
 logger = logging.getLogger(__name__)
 
 STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
+RENAME_FORMAT_PARTS = (
+    ("source", "Source", "{source}"),
+    ("job_type", "Clip type", "{job_type}"),
+    ("datetime", "Time", "{datetime}"),
+    ("title", "Voice title", "{title}"),
+)
+DEFAULT_RENAME_FORMAT_PARTS = (("source", True), ("job_type", False), ("datetime", True), ("title", True))
 
 
 def _set_windows_app_user_model_id(app_id: str) -> None:
@@ -42,6 +48,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
         from PySide6.QtGui import QColor, QIcon, QPalette
         from PySide6.QtWidgets import (
             QApplication,
+            QCheckBox,
             QComboBox,
             QDialog,
             QDialogButtonBox,
@@ -219,14 +226,12 @@ def run_ui(api: BackendApi, server: Any) -> int:
             actions_layout = QGridLayout(self.actions)
             actions_layout.setContentsMargins(0, 4, 0, 0)
             self.open_logs_button = QPushButton("Open logs")
-            self.test_without_obs_button = QPushButton("Test without OBS")
             self.test_microphone_button = QPushButton("Test microphone")
             self.test_voice_button = QPushButton("Test voice")
             actions_layout.addWidget(self.open_logs_button, 0, 0)
-            actions_layout.addWidget(self.test_without_obs_button, 0, 1)
-            actions_layout.addWidget(self.test_microphone_button, 0, 2)
-            actions_layout.addWidget(self.test_voice_button, 0, 3)
-            actions_layout.setColumnStretch(4, 1)
+            actions_layout.addWidget(self.test_microphone_button, 0, 1)
+            actions_layout.addWidget(self.test_voice_button, 0, 2)
+            actions_layout.setColumnStretch(3, 1)
 
             self.layout.addWidget(title)
             self.layout.addWidget(self.details)
@@ -371,7 +376,6 @@ def run_ui(api: BackendApi, server: Any) -> int:
 
             self.system_card = SystemChecksCard()
             self.system_card.open_logs_button.clicked.connect(self.open_logs)
-            self.system_card.test_without_obs_button.clicked.connect(self.create_test_job)
             self.system_card.test_microphone_button.clicked.connect(self.test_microphone)
             self.voice_test_button = self.system_card.test_voice_button
             self.voice_test_button.clicked.connect(self.create_voice_test_job)
@@ -521,34 +525,8 @@ def run_ui(api: BackendApi, server: Any) -> int:
                 return
             os.startfile(folder)
 
-        def create_test_job(self) -> None:
-            logger.info("UI Test without OBS clicked")
-            original = api.config.root / "temp" / "manual-ui-test" / "Forza Horizon 6" / "Replays" / "2026-05-27 22-10-44.mkv"
-            original.parent.mkdir(parents=True, exist_ok=True)
-            original.write_bytes(b"fake video bytes")
-
-            previous_recorder = api.audio_recorder
-            previous_engine = api.stt_engine
-            api.audio_recorder = FakeAudioRecorder()
-            api.stt_engine = FakeSpeechToTextEngine(str(api.config.stt.get("fake_transcript", "clean overtake")))
-            try:
-                api.create_job(
-                    {
-                        "type": "moment",
-                        "original_path": str(original),
-                        "source_title": "Forza Horizon 6",
-                        "created_by": "ui_test_without_obs",
-                    }
-                )
-            finally:
-                api.audio_recorder = previous_recorder
-                api.stt_engine = previous_engine
-
-            self.refresh()
-            QMessageBox.information(self, "Test without OBS", "A sample video was renamed and added to the jobs table.")
-
         def test_microphone(self) -> None:
-            logger.info("UI Test microphone clicked")
+            logger.debug("UI Test microphone clicked")
             self.background_results.put(("notice", "info", {"title": "Test microphone", "message": "Listening started."}))
             thread = threading.Thread(target=self._run_microphone_test, daemon=True)
             thread.start()
@@ -575,7 +553,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
                 self.background_results.put(("microphone", "error", {"error": str(error)}))
 
         def create_voice_test_job(self) -> None:
-            logger.info("UI Test voice clicked")
+            logger.debug("UI Test voice clicked")
             self.voice_test_button.setEnabled(False)
             self.voice_test_button.setText("Listening...")
             thread = threading.Thread(target=self._run_voice_test_job, daemon=True)
@@ -592,7 +570,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
                         "type": "moment",
                         "original_path": str(original),
                         "source_title": "Forza Horizon 6",
-                        "created_by": "ui_voice_test_without_obs",
+                        "created_by": "ui_voice_test",
                     }
                 )
                 job = api.list_jobs()["jobs"][0]
@@ -649,7 +627,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             )
 
         def open_settings(self) -> None:
-            logger.info("UI Settings opened")
+            logger.debug("UI Settings opened")
             dialog = SettingsDialog(self)
             if dialog.exec() != QDialog.Accepted:
                 return
@@ -719,30 +697,44 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.language.setCurrentIndex(max(0, self.language.findData(current_language)))
             form.addRow("Speech language", self.language)
 
-            self.filename_format = QComboBox()
-            filename_format_options = [
-                ("Spoken title only - clean-overtake", "{title}"),
-                ("Time + spoken title - 2026-05-27_22-10-44__clean-overtake", "{datetime}__{title}"),
-                (
-                    "Source + time + spoken title - forza-horizon-6__2026-05-27_22-10-44__clean-overtake",
-                    "{source}__{datetime}__{title}",
-                ),
-                (
-                    "Source + clip type + time + spoken title - forza-horizon-6__mom__2026-05-27_22-10-44__clean-overtake",
-                    "{source}__{job_type}__{datetime}__{title}",
-                ),
-            ]
             current_filename_format = str(api.config.naming.get("format", "{source}__{datetime}__{title}"))
-            for label, value in filename_format_options:
-                self.filename_format.addItem(label, value)
-            known_format_values = [value for _, value in filename_format_options]
-            if current_filename_format not in known_format_values:
-                self.filename_format.addItem(f"Custom - {current_filename_format}", current_filename_format)
-            self.filename_format.setCurrentIndex(
-                max(0, self.filename_format.findData(current_filename_format))
-            )
-            form.addRow("Rename format", self.filename_format)
-            self.filename_format.currentIndexChanged.connect(self.update_filename_preview)
+            rename_parts, self.custom_filename_format = _rename_format_parts_from_template(current_filename_format)
+            self.updating_filename_format = False
+            self.rename_part_order = [part_key for part_key, _enabled in rename_parts]
+            self.rename_part_rows: list[tuple[QCheckBox, QComboBox]] = []
+            self.rename_format_builder = QWidget()
+            builder_layout = QGridLayout(self.rename_format_builder)
+            builder_layout.setContentsMargins(0, 0, 0, 0)
+            builder_layout.setHorizontalSpacing(8)
+            builder_layout.setVerticalSpacing(6)
+            for row_index, (part_key, enabled) in enumerate(rename_parts):
+                checkbox = QCheckBox()
+                checkbox.setChecked(enabled or part_key == "title")
+                checkbox.setEnabled(part_key != "title")
+                checkbox.setToolTip("Voice title is always included." if part_key == "title" else "")
+                combo = QComboBox()
+                for key, label, _token in RENAME_FORMAT_PARTS:
+                    combo.addItem(label, key)
+                combo.setCurrentIndex(max(0, combo.findData(part_key)))
+                combo.currentIndexChanged.connect(
+                    lambda _index, selected_row=row_index: self.move_rename_part(selected_row)
+                )
+                checkbox.stateChanged.connect(lambda _state: self.rename_format_changed())
+                self.rename_part_rows.append((checkbox, combo))
+                builder_layout.addWidget(checkbox, row_index, 0)
+                builder_layout.addWidget(combo, row_index, 1)
+            builder_layout.setColumnStretch(1, 1)
+            form.addRow("Rename format", self.rename_format_builder)
+
+            self.custom_filename_notice = QLabel("")
+            self.custom_filename_notice.setObjectName("Muted")
+            self.custom_filename_notice.setWordWrap(True)
+            if self.custom_filename_format:
+                self.custom_filename_notice.setText(
+                    "Current custom format is kept until you change the builder: "
+                    f"{self.custom_filename_format}"
+                )
+            form.addRow("", self.custom_filename_notice)
 
             self.filename_preview = QLabel("")
             self.filename_preview.setObjectName("Muted")
@@ -793,8 +785,55 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.audio_device.addItems(list_input_devices())
             self.audio_device.setCurrentText(selected)
 
+        def move_rename_part(self, target_index: int) -> None:
+            if self.updating_filename_format:
+                return
+            selected_key = str(self.rename_part_rows[target_index][1].currentData() or "title")
+            current_order = list(self.rename_part_order)
+            next_order = _move_rename_part(current_order, selected_key, target_index)
+            if next_order == current_order:
+                self.rename_format_changed()
+                return
+            self.set_rename_part_order(next_order)
+            self.rename_format_changed()
+
+        def rename_format_changed(self) -> None:
+            self.custom_filename_format = None
+            self.custom_filename_notice.setText("")
+            self.update_filename_preview()
+
+        def current_rename_parts(self) -> list[tuple[str, bool]]:
+            parts = []
+            for row_index, (checkbox, _combo) in enumerate(self.rename_part_rows):
+                part_key = self.rename_part_order[row_index]
+                parts.append((part_key, checkbox.isChecked() or part_key == "title"))
+            return parts
+
+        def set_rename_part_order(self, order: list[str]) -> None:
+            self.updating_filename_format = True
+            try:
+                self.rename_part_order = list(order)
+                for row_index, part_key in enumerate(order):
+                    checkbox, combo = self.rename_part_rows[row_index]
+                    combo.setCurrentIndex(max(0, combo.findData(part_key)))
+                    checkbox.setChecked(checkbox.isChecked() or part_key == "title")
+                    checkbox.setEnabled(part_key != "title")
+                    checkbox.setToolTip("Voice title is always included." if part_key == "title" else "")
+            finally:
+                self.updating_filename_format = False
+
+        def selected_filename_format(self) -> str:
+            if self.custom_filename_format:
+                return self.custom_filename_format
+            return _rename_format_template_from_parts(self.current_rename_parts())
+
         def update_filename_preview(self) -> None:
-            template = str(self.filename_format.currentData() or "{title}")
+            if not hasattr(self, "filename_preview"):
+                return
+            if self.custom_filename_format:
+                template = self.custom_filename_format
+            else:
+                template = _rename_format_template_from_parts(self.current_rename_parts())
             datetime_pattern = self.datetime_format.text().strip() or "%Y-%m-%d_%H-%M-%S"
             sample_datetime = "2026-05-27_22-10-44"
             if datetime_pattern == "%Y%m%d_%H%M%S":
@@ -806,13 +845,12 @@ def run_ui(api: BackendApi, server: Any) -> int:
             sample = (
                 template.replace("{source}", "forza-horizon-6")
                 .replace("{game}", "forza-horizon-6")
-                .replace("{job_type}", "mom")
+                .replace("{job_type}", "clip")
                 .replace("{datetime}", sample_datetime)
                 .replace("{title}", "clean-overtake")
             )
             self.filename_preview.setText(
-                "Variables: {title} required, {datetime}, {source}, {job_type}. Preview: "
-                f"{sample}.mkv"
+                f"Preview: {sample}.mkv\nFormat: {template}"
             )
 
         def selected_language_value(self) -> str:
@@ -826,7 +864,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             api.config.data["stt"]["engine"] = str(self.engine.currentData() or "faster_whisper")
             api.config.data["stt"]["model_path"] = self.model_path.text().strip()
             api.config.data["stt"]["language"] = self.selected_language_value()
-            api.config.data["naming"]["format"] = str(self.filename_format.currentData() or "{title}")
+            api.config.data["naming"]["format"] = self.selected_filename_format()
             api.config.data["naming"]["datetime_format"] = self.datetime_format.text().strip() or "%Y-%m-%d_%H-%M-%S"
             api.config.data["audio"]["device"] = self.audio_device.currentText().strip() or "default"
             save_config(api.config)
@@ -864,6 +902,41 @@ def run_ui(api: BackendApi, server: Any) -> int:
     finally:
         signal_timer.stop()
         signal.signal(signal.SIGINT, previous_sigint)
+
+
+def _rename_format_parts_from_template(template: str) -> tuple[list[tuple[str, bool]], str | None]:
+    token_to_key = {token: key for key, _label, token in RENAME_FORMAT_PARTS}
+    default_parts = list(DEFAULT_RENAME_FORMAT_PARTS)
+    segments = [segment.strip() for segment in template.split("__") if segment.strip()]
+    if not segments:
+        return default_parts, None
+    keys = [token_to_key.get(segment) for segment in segments]
+    if any(key is None for key in keys) or len(set(keys)) != len(keys) or "title" not in keys:
+        return default_parts, template
+
+    ordered = [(str(key), True) for key in keys]
+    for key, _label, _token in RENAME_FORMAT_PARTS:
+        if key not in keys:
+            ordered.append((key, False))
+    return ordered, None
+
+
+def _rename_format_template_from_parts(parts: list[tuple[str, bool]]) -> str:
+    key_to_token = {key: token for key, _label, token in RENAME_FORMAT_PARTS}
+    tokens = [key_to_token[part_key] for part_key, enabled in parts if enabled or part_key == "title"]
+    if "{title}" not in tokens:
+        tokens.append("{title}")
+    return "__".join(tokens)
+
+
+def _move_rename_part(order: list[str], selected_key: str, target_index: int) -> list[str]:
+    if selected_key not in order or target_index < 0 or target_index >= len(order):
+        return list(order)
+    moved = list(order)
+    source_index = moved.index(selected_key)
+    item = moved.pop(source_index)
+    moved.insert(target_index, item)
+    return moved
 
 
 def _job_row(job: dict[str, Any]) -> list[str]:
@@ -956,7 +1029,7 @@ def _type_label(job_type: str) -> str:
     if job_type == "recording":
         return "rec"
     if job_type == "moment":
-        return "mom"
+        return "clip"
     return job_type
 
 
@@ -964,7 +1037,7 @@ def _job_type_name(job_type: str) -> str:
     if job_type == "recording":
         return "Recording"
     if job_type == "moment":
-        return "Moment"
+        return "Clip"
     return job_type.title()
 
 

@@ -33,7 +33,7 @@ on_conflict = "increment"
 
 [naming.job_type_tokens]
 recording = "rec"
-moment = "mom"
+moment = "clip"
 
 [jobs]
 max_jobs_in_ui = 50

@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> None:
     config = load_config()
     configure_logging(config)
     logger = logging.getLogger(__name__)
-    logger.info("Starting backend app: headless=%s", args.headless)
+    logger.debug("Starting backend app: headless=%s", args.headless)
     api = BackendApi(config)
     if args.obs_pid:
         threading.Thread(target=_monitor_obs_process, args=(api, args.obs_pid), daemon=True).start()
@@ -38,9 +38,9 @@ def main(argv: list[str] | None = None) -> None:
         else:
             run_ui(api, server)
     except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received")
+        logger.debug("Keyboard interrupt received")
     finally:
-        logger.info("Shutting down backend app")
+        logger.debug("Shutting down backend app")
         api.request_shutdown()
         server.shutdown()
         thread.join(timeout=2)
@@ -63,10 +63,10 @@ def _run_headless(api: BackendApi) -> None:
 
 def _monitor_obs_process(api: BackendApi, obs_pid: int) -> None:
     logger = logging.getLogger(__name__)
-    logger.info("Monitoring OBS process: pid=%s", obs_pid)
+    logger.debug("Monitoring OBS process: pid=%s", obs_pid)
     while not api.shutdown_requested.is_set():
         if not _process_exists(obs_pid):
-            logger.info("OBS process disappeared; backend will shut down")
+            logger.debug("OBS process disappeared; backend will shut down")
             api.request_shutdown()
             return
         time.sleep(1.0)
