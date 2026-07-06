@@ -11,8 +11,8 @@ def test_create_job_is_session_only(tmp_path: Path) -> None:
     request = JobCreateRequest.from_payload(
         {
             "type": "recording",
-            "original_path": "D:/Recordings/Forza Horizon 6/2026-05-27 21-31-12.mkv",
-            "source_title": "Forza Horizon 6",
+            "original_path": "D:/Recordings/Test Game/2026-05-27 21-31-12.mkv",
+            "source_title": "Test Game",
         }
     )
 
@@ -20,7 +20,7 @@ def test_create_job_is_session_only(tmp_path: Path) -> None:
     reloaded = JobStore(config)
 
     assert job.status == "created"
-    assert job.game == "forza-horizon-6"
+    assert job.game == "test-game"
     assert not (tmp_path / "jobs.json").exists()
     assert reloaded.list() == []
 
@@ -32,7 +32,7 @@ def test_status_transition_updates_job(tmp_path: Path) -> None:
         JobCreateRequest.from_payload(
             {
                 "type": "moment",
-                "original_path": "D:/Recordings/Forza Horizon 6/Replays/2026-05-27 22-10-44.mkv",
+                "original_path": "D:/Recordings/Test Game/Replays/2026-05-27 22-10-44.mkv",
             }
         )
     )

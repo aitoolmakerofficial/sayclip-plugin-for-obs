@@ -14,7 +14,7 @@ class LockedRenamer:
 
 
 def test_fake_voice_pipeline_renames_real_temp_video(tmp_path: Path) -> None:
-    original = tmp_path / "Forza Horizon 6" / "2026-05-27 22-10-44.mkv"
+    original = tmp_path / "Test Game" / "2026-05-27 22-10-44.mkv"
     original.parent.mkdir()
     original.write_bytes(b"video")
     api = BackendApi(
@@ -29,7 +29,7 @@ def test_fake_voice_pipeline_renames_real_temp_video(tmp_path: Path) -> None:
 
     assert created["status"] == "done"
     assert job["status"] == "done"
-    assert final_path.name == "forza-horizon-6__2026-05-27_22-10-44__clean-overtake.mkv"
+    assert final_path.name == "test-game__2026-05-27_22-10-44__clean-overtake.mkv"
     assert final_path.exists()
     assert not original.exists()
 

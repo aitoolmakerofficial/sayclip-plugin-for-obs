@@ -5,6 +5,9 @@
 SayClip is a local OBS companion tool for voice-titled recording and
 replay-buffer renames.
 
+For the detailed creator-focused setup and troubleshooting guide, see
+[`public/user-guide.md`](public/user-guide.md).
+
 SayClip runs on your machine. The OBS bridge, backend UI, browser dock, audio
 recording, speech recognition, and file rename flow are designed for local use.
 The backend listens on localhost only by default:
@@ -103,10 +106,10 @@ Built-in presets:
   `{datetime}__{title}` -> `2026-05-27_22-10-44__clean-overtake.mkv`
 - Source + time + spoken title:
   `{source}__{datetime}__{title}` ->
-  `forza-horizon-6__2026-05-27_22-10-44__clean-overtake.mkv`
+  `test-game__2026-05-27_22-10-44__clean-overtake.mkv`
 - Source + clip type + time + spoken title:
   `{source}__{job_type}__{datetime}__{title}` ->
-  `forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake.mkv`
+  `test-game__clip__2026-05-27_22-10-44__clean-overtake.mkv`
 
 Custom formats must include `{title}`. Without it, the recognized voice title
 has nowhere to go.

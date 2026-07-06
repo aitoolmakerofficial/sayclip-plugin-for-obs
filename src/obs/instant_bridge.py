@@ -601,6 +601,8 @@ def _post_bridge_state():
         "recording_active": _obs_call_bool("obs_frontend_recording_active"),
         "recording_paused": _obs_call_bool("obs_frontend_recording_paused"),
         "replay_buffer_active": _obs_call_bool("obs_frontend_replay_buffer_active"),
+        "recording_output_path": _text_or_none(get_last_recording_path()),
+        "replay_output_path": _text_or_none(get_last_replay_path()),
     }
     try:
         return _post_json(load_bridge_config(), "/api/bridge/state", payload)
@@ -730,6 +732,11 @@ def _settings_get_string(settings, key):
     if obs and settings:
         return obs.obs_data_get_string(settings, key)
     return ""
+
+
+def _text_or_none(value):
+    text = str(value or "").strip()
+    return text or None
 
 
 def _obs_call(name, *args):

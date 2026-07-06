@@ -31,8 +31,8 @@ def test_health_contract(tmp_path: Path) -> None:
 
 def test_valid_recording_and_moment_jobs(tmp_path: Path) -> None:
     api = BackendApi(load_config(tmp_path))
-    recording_path = tmp_path / "Forza Horizon 6" / "2026-05-27 21-31-12.mkv"
-    moment_path = tmp_path / "Forza Horizon 6" / "Replays" / "2026-05-27 22-10-44.mkv"
+    recording_path = tmp_path / "Test Game" / "2026-05-27 21-31-12.mkv"
+    moment_path = tmp_path / "Test Game" / "Replays" / "2026-05-27 22-10-44.mkv"
     recording_path.parent.mkdir(parents=True)
     moment_path.parent.mkdir(parents=True)
     recording_path.write_bytes(b"recording")
@@ -71,7 +71,7 @@ def test_invalid_job_schema_rejected(tmp_path: Path) -> None:
 def test_http_health_and_create_job(tmp_path: Path) -> None:
     config = load_config(tmp_path)
     config.data["backend"]["port"] = 0
-    original_path = tmp_path / "Forza Horizon 6" / "2026-05-27 21-31-12.mkv"
+    original_path = tmp_path / "Test Game" / "2026-05-27 21-31-12.mkv"
     original_path.parent.mkdir(parents=True)
     original_path.write_bytes(b"recording")
     server = create_server(BackendApi(config))
@@ -194,6 +194,8 @@ def test_status_returns_valid_json(tmp_path: Path) -> None:
         "recording_active": None,
         "recording_paused": None,
         "replay_buffer_active": None,
+        "recording_output_path": None,
+        "replay_output_path": None,
         "fresh": False,
     }
     assert state["actions"]["save_moment"]["reason"] == "bridge_disconnected"
@@ -204,15 +206,15 @@ def test_status_returns_valid_json(tmp_path: Path) -> None:
 
 def test_job_for_ui_returns_latest_job_shape(tmp_path: Path) -> None:
     api = BackendApi(load_config(tmp_path))
-    original_path = tmp_path / "Forza Horizon 6" / "clip.mkv"
+    original_path = tmp_path / "Test Game" / "clip.mkv"
     original_path.parent.mkdir()
     original_path.write_bytes(b"recording")
 
-    api.create_job({"type": "moment", "original_path": str(original_path), "source_title": "Forza Horizon 6"})
+    api.create_job({"type": "moment", "original_path": str(original_path), "source_title": "Test Game"})
     job = api.job_for_ui(api.list_jobs()["jobs"][0])
 
     assert job["type"] == "clip"
-    assert job["game"] == "forza-horizon-6"
+    assert job["game"] == "test-game"
     assert job["status"] == "done"
     assert job["output_filename"].endswith(".mkv")
     assert job["can_open_folder"] is True
@@ -256,6 +258,23 @@ def test_bridge_state_controls_save_action_availability(tmp_path: Path) -> None:
     assert state["actions"]["save_recording"] == {"enabled": True, "reason": None}
     assert moment == {"ok": True, "accepted": False, "reason": "replay_buffer_inactive"}
     assert recording["accepted"] is True
+
+
+def test_manual_voice_test_uses_fresh_obs_output_folder(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    replay_path = tmp_path / "OBS Output" / "Replay.mkv"
+
+    api.record_bridge_state(
+        {
+            "recording_active": True,
+            "recording_paused": False,
+            "replay_buffer_active": True,
+            "recording_output_path": str(tmp_path / "OBS Output" / "Recording.mkv"),
+            "replay_output_path": str(replay_path),
+        }
+    )
+
+    assert api.manual_voice_test_original_path("test.mkv") == replay_path.with_name("test.mkv")
 
 
 def test_bridge_command_flow_creates_job_from_done_result(tmp_path: Path) -> None:
