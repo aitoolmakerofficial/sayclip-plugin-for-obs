@@ -455,7 +455,13 @@ def test_bridge_polls_and_executes_dock_command(monkeypatch) -> None:
     assert results == [
         (
             "/api/bridge/state",
-            {"recording_active": False, "recording_paused": False, "replay_buffer_active": False},
+            {
+                "recording_active": False,
+                "recording_paused": False,
+                "replay_buffer_active": False,
+                "recording_output_path": None,
+                "replay_output_path": None,
+            },
         ),
         ("/api/bridge/command-result", {"id": "cmd-1", "status": "processing"})
     ]
@@ -486,7 +492,13 @@ def test_bridge_posts_obs_state_while_polling(monkeypatch) -> None:
     assert posted == [
         (
             "/api/bridge/state",
-            {"recording_active": True, "recording_paused": False, "replay_buffer_active": True},
+            {
+                "recording_active": True,
+                "recording_paused": False,
+                "replay_buffer_active": True,
+                "recording_output_path": None,
+                "replay_output_path": None,
+            },
         )
     ]
 
@@ -538,13 +550,25 @@ def test_bridge_action_specific_error_does_not_block_later_valid_command(monkeyp
     assert results == [
         (
             "/api/bridge/state",
-            {"recording_active": False, "recording_paused": False, "replay_buffer_active": True},
+            {
+                "recording_active": False,
+                "recording_paused": False,
+                "replay_buffer_active": True,
+                "recording_output_path": None,
+                "replay_output_path": str(tmp_path / "Game" / "clip.mkv"),
+            },
         ),
         ("/api/bridge/command-result", {"id": "cmd-recording", "status": "processing"}),
         ("/api/bridge/command-result", {"id": "cmd-recording", "status": "error", "error": "Recording is not active."}),
         (
             "/api/bridge/state",
-            {"recording_active": False, "recording_paused": False, "replay_buffer_active": True},
+            {
+                "recording_active": False,
+                "recording_paused": False,
+                "replay_buffer_active": True,
+                "recording_output_path": None,
+                "replay_output_path": str(tmp_path / "Game" / "clip.mkv"),
+            },
         ),
         ("/api/bridge/command-result", {"id": "cmd-moment", "status": "processing"}),
         (

@@ -29,6 +29,8 @@ RENAME_FORMAT_PARTS = (
     ("title", "Voice title", "{title}"),
 )
 DEFAULT_RENAME_FORMAT_PARTS = (("source", True), ("job_type", False), ("datetime", True), ("title", True))
+VOICE_TEST_SOURCE_TITLE = "Test Game"
+VOICE_TEST_FILENAME = "2026-05-27 22-10-44.mkv"
 
 
 def _set_windows_app_user_model_id(app_id: str) -> None:
@@ -560,7 +562,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
             thread.start()
 
         def _run_voice_test_job(self) -> None:
-            original = api.config.root / "temp" / "manual-voice-test" / "Forza Horizon 6" / "Replays" / "2026-05-27 22-10-44.mkv"
+            original = api.manual_voice_test_original_path(VOICE_TEST_FILENAME)
             original.parent.mkdir(parents=True, exist_ok=True)
             original.write_bytes(b"fake video bytes")
 
@@ -569,7 +571,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
                     {
                         "type": "moment",
                         "original_path": str(original),
-                        "source_title": "Forza Horizon 6",
+                        "source_title": VOICE_TEST_SOURCE_TITLE,
                         "created_by": "ui_voice_test",
                     }
                 )
@@ -843,8 +845,8 @@ def run_ui(api: BackendApi, server: Any) -> int:
             elif datetime_pattern == "%H-%M-%S":
                 sample_datetime = "22-10-44"
             sample = (
-                template.replace("{source}", "forza-horizon-6")
-                .replace("{game}", "forza-horizon-6")
+                template.replace("{source}", "test-game")
+                .replace("{game}", "test-game")
                 .replace("{job_type}", "clip")
                 .replace("{datetime}", sample_datetime)
                 .replace("{title}", "clean-overtake")

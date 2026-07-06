@@ -252,12 +252,21 @@ class BackendApi:
             "recording_active": bool(payload.get("recording_active")),
             "recording_paused": bool(payload.get("recording_paused")),
             "replay_buffer_active": bool(payload.get("replay_buffer_active")),
+            "recording_output_path": _optional_path_text(payload.get("recording_output_path")),
+            "replay_output_path": _optional_path_text(payload.get("replay_output_path")),
         }
         with self._lock:
             self.bridge_last_seen_at = datetime.now(timezone.utc).astimezone()
             self.obs_state = state
             self.obs_state_seen_at = self.bridge_last_seen_at
         return {"ok": True}
+
+    def manual_voice_test_original_path(self, filename: str) -> Path:
+        with self._lock:
+            folder = self._obs_output_folder_locked()
+            if folder is None:
+                folder = self._latest_output_folder_locked()
+        return folder / filename if folder else self.config.root / "manual-voice-test" / filename
 
     def _enqueue_save_action(self, action: BridgeCommandAction) -> dict[str, Any]:
         with self._lock:
@@ -457,8 +466,32 @@ class BackendApi:
             "recording_active": bool(self.obs_state.get("recording_active")) if fresh else None,
             "recording_paused": bool(self.obs_state.get("recording_paused")) if fresh else None,
             "replay_buffer_active": bool(self.obs_state.get("replay_buffer_active")) if fresh else None,
+            "recording_output_path": self.obs_state.get("recording_output_path") if fresh else None,
+            "replay_output_path": self.obs_state.get("replay_output_path") if fresh else None,
             "fresh": fresh,
         }
+
+    def _obs_output_folder_locked(self) -> Path | None:
+        if not self._obs_state_is_fresh():
+            return None
+        for key in ("replay_output_path", "recording_output_path"):
+            folder = _folder_from_path_text(self.obs_state.get(key))
+            if folder:
+                return folder
+        return None
+
+    def _latest_output_folder_locked(self) -> Path | None:
+        jobs = self.store.list()
+        if not jobs:
+            return None
+        job = jobs[0].to_dict()
+        final_path = _path_or_none(job.get("final_path"))
+        if final_path:
+            return final_path.parent
+        original_path = _path_or_none(job.get("original_path"))
+        if original_path:
+            return original_path.parent
+        return None
 
     def _action_availability_payload(self, *, busy: bool) -> dict[str, dict[str, Any]]:
         return {
@@ -599,6 +632,18 @@ class BackendApi:
 def _path_or_none(value: Any) -> Path | None:
     text = str(value or "").strip()
     return Path(text) if text else None
+
+
+def _optional_path_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _folder_from_path_text(value: Any) -> Path | None:
+    path = _path_or_none(value)
+    if not path:
+        return None
+    return path.parent
 
 
 def _folder_for_job(job: dict[str, Any]) -> Path | None:

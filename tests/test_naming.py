@@ -19,20 +19,20 @@ def test_sanitizer_decodes_percent_encoded_title_chars() -> None:
 
 def test_formatter_acceptance_example() -> None:
     filename = format_filename(
-        game="Forza Horizon 6",
+        game="Test Game",
         job_type="moment",
-        original_path="D:/Recordings/Forza Horizon 6/Replays/2026-05-27 22-10-44.mkv",
+        original_path="D:/Recordings/Test Game/Replays/2026-05-27 22-10-44.mkv",
         title="clean overtake",
         when=datetime(2026, 5, 27, 23, 0, 0),
         filename_format="{source}__{job_type}__{datetime}__{title}",
     )
 
-    assert filename == "forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake.mkv"
+    assert filename == "test-game__clip__2026-05-27_22-10-44__clean-overtake.mkv"
 
 
 def test_formatter_uses_configurable_format() -> None:
     filename = format_filename(
-        game="Forza Horizon 6",
+        game="Test Game",
         job_type="recording",
         original_path="D:/Recordings/clip.mkv",
         title="clean overtake",
@@ -57,7 +57,7 @@ def test_formatter_omits_unknown_source_token() -> None:
 
 def test_formatter_keeps_legacy_game_token() -> None:
     filename = format_filename(
-        game="Forza Horizon 6",
+        game="Test Game",
         job_type="moment",
         original_path="D:/Recordings/clip.mkv",
         title="clean overtake",
@@ -65,7 +65,7 @@ def test_formatter_keeps_legacy_game_token() -> None:
         filename_format="{game}__{title}",
     )
 
-    assert filename == "forza-horizon-6__clean-overtake.mkv"
+    assert filename == "test-game__clean-overtake.mkv"
 
 
 def test_conflict_suffixing(tmp_path: Path) -> None:

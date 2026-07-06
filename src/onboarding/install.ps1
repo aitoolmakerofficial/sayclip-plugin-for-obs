@@ -365,7 +365,7 @@ function Select-DownloadedModel($DownloadedModels) {
 function Select-FilenameFormat {
     Show-SetupHeader 4 "Voice and file names" "Rename format"
     Write-Host "Choose what the renamed file should include."
-    Write-Muted "Examples use source Forza Horizon 6, clip type clip, and spoken title clean overtake."
+    Write-Muted "Examples use source Test Game, clip type clip, and spoken title clean overtake."
     Write-Host ""
     Write-FilenameFormatReference
     Write-Host ""
@@ -374,9 +374,9 @@ function Select-FilenameFormat {
     Write-Option 2 "Time + spoken title"
     Write-Muted "    2026-05-27_22-10-44__clean-overtake"
     Write-Option 3 "Source + time + spoken title"
-    Write-Muted "    forza-horizon-6__2026-05-27_22-10-44__clean-overtake"
+    Write-Muted "    test-game__2026-05-27_22-10-44__clean-overtake"
     Write-Option 4 "Source + clip type + time + spoken title"
-    Write-Muted "    forza-horizon-6__clip__2026-05-27_22-10-44__clean-overtake"
+    Write-Muted "    test-game__clip__2026-05-27_22-10-44__clean-overtake"
     Write-Option 5 "Custom format"
     $choice = Read-Choice "Choose format" @("1", "2", "3", "4", "5")
     if ($choice -eq "1") { return "{title}" }
