@@ -16,10 +16,9 @@ http://127.0.0.1:17891
 
 ## Video Guide
 
-Installation and usage videos are published through the official AI Toolmaker
-YouTube channel:
+Installation and usage video:
 
-https://www.youtube.com/@WorkingAiTools
+https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg
 
 Use the official repository and official video links when installing SayClip.
 Do not download modified installers or model links from random mirrors unless

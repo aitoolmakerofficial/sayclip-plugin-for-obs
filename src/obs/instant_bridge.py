@@ -23,7 +23,7 @@ except Exception:
 
 APP_NAME = "SayClip"
 APP_VERSION = "0.1.0"
-YOUTUBE_GUIDE_URL = "https://www.youtube.com/@WorkingAiTools"
+YOUTUBE_GUIDE_URL = "https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg"
 OBS_DOCK_URL = "http://127.0.0.1:17891/dock"
 STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
 DEFAULT_CONFIG = {
