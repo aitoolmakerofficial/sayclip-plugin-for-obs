@@ -234,27 +234,6 @@ SayClip automatically falls back to the recording folder.
 ```text
 http://127.0.0.1:17891/dock
 ```
-
----
-
-# Related Projects
-
-## Stream Deck Plugin
-
-https://github.com/aitoolmakerofficial/sayclip-plugin-for-streamdeck
-
----
-
-# Documentation
-
-- User Guide
-  [`public/user-guide.md`](public/user-guide.md)
-
-- Video Tutorial
-  https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg
-
----
-
 # License
 
 SayClip is free and open-source software licensed under the GNU General Public
@@ -263,5 +242,4 @@ License v2.0 or later (GPL-2.0-or-later).
 ---
 
 # Author
-
 Created and maintained by **AI Toolmaker**.
