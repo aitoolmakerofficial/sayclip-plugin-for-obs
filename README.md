@@ -2,212 +2,266 @@
 
 ![SayClip GitHub cover](public/sayclip-github-cover.png)
 
-SayClip is a local OBS companion tool for voice-titled recording and
-replay-buffer renames.
+SayClip is a local companion tool for OBS Studio that renames recordings and
+Replay Buffer saves using spoken voice titles.
 
-For the detailed creator-focused setup and troubleshooting guide, see
-[`public/user-guide.md`](public/user-guide.md).
+Everything runs locally on your computer. Audio recording, speech recognition,
+the backend, browser dock, and file renaming never require cloud services.
 
-SayClip runs on your machine. The OBS bridge, backend UI, browser dock, audio
-recording, speech recognition, and file rename flow are designed for local use.
-The backend listens on localhost only by default:
+📖 **Documentation**  
+See the detailed setup and troubleshooting guide:
+[`public/user-guide.md`](public/user-guide.md)
 
-http://127.0.0.1:17891
-
-## Video Guide
-
-Installation and usage video:
-
+🎥 **Video Tutorial**  
+Watch the installation and usage guide:
 https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg
 
-Use the official repository and official video links when installing SayClip.
-Do not download modified installers or model links from random mirrors unless
-you have reviewed and trust them.
+🎮 **Stream Deck Plugin**  
+Control SayClip directly from your Stream Deck:
+https://github.com/aitoolmakerofficial/sayclip-plugin-for-streamdeck
 
-## Quick Install Path
+The local backend listens on:
 
-1. Download or clone the official SayClip repository.
-2. Open OBS.
-3. Go to Tools -> Scripts.
+```text
+http://127.0.0.1:17891
+```
+
+---
+
+# Quick Install
+
+1. Download or clone the SayClip repository.
+2. Open OBS Studio.
+3. Go to **Tools → Scripts**.
 4. Add `SayClip_Starter.py`.
-5. SayClip Onboarding opens from the OBS script when setup is missing.
-6. Follow SayClip Onboarding step by step.
-7. Add the OBS dock at `http://127.0.0.1:17891/dock` if you want the browser
-   panel inside OBS.
+5. SayClip Onboarding will start automatically if setup is required.
+6. Complete the onboarding steps.
+7. (Optional) Add the browser dock using:
 
-SayClip Onboarding creates a `.venv` folder inside this project and installs
-Python dependencies there. It does not modify your system Python packages.
+```text
+http://127.0.0.1:17891/dock
+```
 
-## Local Speech Recognition
+SayClip creates its own `.venv` inside the project directory and installs all
+required Python packages there. Your system Python installation is not modified.
 
-SayClip uses speech recognition to turn your spoken title into the final file
-name. Recognition is local at runtime: audio is recorded locally, temporary
-audio stays on your machine, and the configured Faster Whisper model is loaded
-from a local folder.
+---
 
-To recognize speech locally, SayClip needs a recognition model on disk. The
-onboarding installer can download one of these Faster Whisper model folders:
+# Features
 
-- Fastest: `Systran/faster-whisper-tiny`
-  `https://huggingface.co/Systran/faster-whisper-tiny`
-- Balanced: `Systran/faster-whisper-small`
-  `https://huggingface.co/Systran/faster-whisper-small`
+- Voice-powered recording names
+- Voice-powered Replay Buffer names
+- Local speech recognition
+- Faster Whisper support
+- Custom filename templates
+- Browser Dock
+- Stream Deck integration
+- Local-only backend
+- GPL v2+ Open Source
 
-Downloaded models are saved under this project folder:
+---
+
+# Local Speech Recognition
+
+SayClip uses Faster Whisper to convert spoken titles into filenames.
+
+Speech recognition is performed locally:
+
+- Audio is recorded locally.
+- Temporary audio files remain on your computer.
+- Recognition models are loaded from local storage.
+
+During onboarding you can download one of the supported models:
+
+- **Fastest**
+  `Systran/faster-whisper-tiny`
+  https://huggingface.co/Systran/faster-whisper-tiny
+
+- **Balanced**
+  `Systran/faster-whisper-small`
+  https://huggingface.co/Systran/faster-whisper-small
+
+Models are stored inside:
 
 ```text
 models\faster-whisper-tiny
 models\faster-whisper-small
 ```
 
-The model download comes from Hugging Face, which is a third-party source.
-Review the shown link before continuing. SayClip does not control third-party
-files, hosting, availability, or future changes to those pages.
+You may also select an existing Faster Whisper model already available on your
+computer.
 
-You can also skip the download and choose an existing local Faster Whisper model
-folder. A valid folder should contain at least `config.json`, `model.bin`, and
-`tokenizer.json` or `vocabulary.txt`.
+A valid model folder should contain files such as:
 
-## Speech Language
+- `config.json`
+- `model.bin`
+- `tokenizer.json` or `vocabulary.txt`
 
-The speech language setting tells Faster Whisper what language to expect for
-your voice titles. The UI lists common choices:
+---
 
-- `en` for English
-- `zh` for Chinese
-- `es` for Spanish
-- `fr` for French
-- `de` for German
-- `ja` for Japanese
-- `ru` for Russian
+# Speech Language
 
-Other Faster Whisper/Whisper language codes can be typed manually.
+Common language codes:
 
-## Rename Format
+- `en` — English
+- `zh` — Chinese
+- `es` — Spanish
+- `fr` — French
+- `de` — German
+- `ja` — Japanese
+- `ru` — Russian
 
-The rename format controls how SayClip builds the new recording or replay file
-name. The spoken title is always sanitized for Windows filenames.
+Any Faster Whisper language code may also be entered manually.
 
-Supported variables:
+---
 
-- `{title}`: recognized spoken title. This is required for voice naming.
-- `{datetime}`: clip or recording time formatted with `datetime_format`.
-- `{source}`: OBS/game/source title resolved by the OBS bridge.
-- `{job_type}`: short action type, `rec` for recording or `clip` for replay
-  buffer moment.
-- `{game}`: legacy alias for the source/game value.
+# Rename Format
 
-Built-in presets:
+Filename templates support the following variables:
 
-- Spoken title only:
-  `{title}` -> `clean-overtake.mkv`
-- Time + spoken title:
-  `{datetime}__{title}` -> `2026-05-27_22-10-44__clean-overtake.mkv`
-- Source + time + spoken title:
-  `{source}__{datetime}__{title}` ->
-  `test-game__2026-05-27_22-10-44__clean-overtake.mkv`
-- Source + clip type + time + spoken title:
-  `{source}__{job_type}__{datetime}__{title}` ->
-  `test-game__clip__2026-05-27_22-10-44__clean-overtake.mkv`
+- `{title}`
+- `{datetime}`
+- `{source}`
+- `{job_type}`
+- `{game}` (legacy alias)
 
-Custom formats must include `{title}`. Without it, the recognized voice title
-has nowhere to go.
+Examples:
 
-## Date And Time Format
+```text
+{title}
+→ clean-overtake.mkv
 
-`datetime_format` uses Python `strftime` patterns. It is only used when your
-rename format contains `{datetime}`.
+{datetime}__{title}
+→ 2026-05-27_22-10-44__clean-overtake.mkv
 
-Common patterns:
+{source}__{datetime}__{title}
+→ test-game__2026-05-27_22-10-44__clean-overtake.mkv
 
-- `%Y-%m-%d_%H-%M-%S` -> `2026-05-27_22-10-44`
-- `%Y%m%d_%H%M%S` -> `20260527_221044`
-- `%Y-%m-%d` -> `2026-05-27`
-- `%H-%M-%S` -> `22-10-44`
+{source}__{job_type}__{datetime}__{title}
+→ test-game__clip__2026-05-27_22-10-44__clean-overtake.mkv
+```
 
-Avoid characters that Windows does not allow in filenames, such as `:`, `?`,
-`*`, `<`, `>`, `|`, and quotes. SayClip sanitizes invalid filename characters,
-but readable patterns are easier to debug.
+Custom templates must include `{title}`.
 
-## Stream Deck Plugin
+---
 
-SayClip has planned first-class Stream Deck support that does not use hotkeys.
+# Date & Time Format
 
-The plugin talks to the SayClip backend on localhost:
+`datetime_format` uses standard Python `strftime` formatting.
+
+Examples:
+
+```text
+%Y-%m-%d_%H-%M-%S
+→ 2026-05-27_22-10-44
+
+%Y%m%d_%H%M%S
+→ 20260527_221044
+
+%Y-%m-%d
+→ 2026-05-27
+
+%H-%M-%S
+→ 22-10-44
+```
+
+---
+
+# Stream Deck Plugin
+
+A native Stream Deck plugin is available for SayClip.
+
+Repository:
+
+https://github.com/aitoolmakerofficial/sayclip-plugin-for-streamdeck
+
+The plugin communicates with the local backend:
 
 ```text
 http://127.0.0.1:17891
 ```
 
-OBS bridge remains the only component that controls OBS. The Stream Deck plugin calls backend save endpoints, the backend exposes one bridge command, and the OBS bridge polls and executes OBS actions.
+Available actions:
 
-PySide, OBS dock, and Stream Deck should all use the same backend save/status contract.
+- **CLIP** — Save Replay Buffer.
+- **REC** — Stop recording and rename it.
+- **STATUS** — Show backend status.
 
-v1 actions:
+The Stream Deck plugin communicates only with the local backend. OBS Studio is
+controlled exclusively through the SayClip bridge.
 
-- CLIP: save replay buffer moment.
-- REC: stop active recording and rename it.
-- STATUS: show backend state.
+---
 
-## OBS Script
+# OBS Script
 
-Load this product-facing script in OBS:
+Load the following script:
 
 ```text
 SayClip_Starter.py
 ```
 
-If setup is missing, it opens SayClip Onboarding. On normal OBS startup it launches the backend in headless mode. Use `Open Backend UI` from the script properties to restart the backend with the PySide window visible.
+If setup has not been completed, the onboarding wizard opens automatically.
 
-## Source Name In Filenames
+During normal startup the script launches the backend in headless mode.
 
-The OBS script has two setup areas:
+The **Open Backend UI** button can be used to restart the backend with the full
+desktop interface.
 
-- Backend: controls how the local backend starts.
-- Title setup: optionally chooses the OBS source name used for `{source}` in renamed files.
+---
 
-For filename formats that include `{source}`, SayClip resolves the source like this:
+# Source Name in Filenames
 
-1. If `Title source name` is filled in the OBS script settings and OBS has a source with that name, read that source's window/title setting as `source_title`.
-2. Otherwise use `source_title` if the OBS bridge provides one.
-3. Otherwise use the parent folder of the saved recording/replay file.
-4. If neither value is usable, omit the source token.
+If `{source}` is used, SayClip resolves it in this order:
 
-If the configured OBS source exists but does not expose a usable window/title setting, SayClip still falls back to the parent folder instead of using the OBS source name itself. Leave `Title source name` empty to keep the previous parent-folder behavior.
+1. The configured **Title source name** from the script settings.
+2. `source_title` provided by the bridge.
+3. The recording folder name.
+4. Omit the value if unavailable.
 
-## OBS Custom Browser Dock
+If the configured OBS source exists but does not expose a usable window title,
+SayClip automatically falls back to the recording folder.
 
-1. Start SayClip backend.
-2. Open OBS.
-3. Go to Docks -> Custom Browser Docks.
-4. Add:
-   Name: SayClip
-   URL: http://127.0.0.1:17891/dock
-5. Apply.
+---
 
-## License and Attribution
+# Browser Dock
+
+1. Start the backend.
+2. Open OBS Studio.
+3. Go to **Docks → Custom Browser Docks**.
+4. Create a dock named **SayClip**.
+5. Use:
+
+```text
+http://127.0.0.1:17891/dock
+```
+
+---
+
+# Related Projects
+
+## Stream Deck Plugin
+
+https://github.com/aitoolmakerofficial/sayclip-plugin-for-streamdeck
+
+---
+
+# Documentation
+
+- User Guide
+  [`public/user-guide.md`](public/user-guide.md)
+
+- Video Tutorial
+  https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg
+
+---
+
+# License
 
 SayClip is free and open-source software licensed under the GNU General Public
-License v2.0 or later.
+License v2.0 or later (GPL-2.0-or-later).
 
-You are free to use, study, modify, and redistribute SayClip under the terms of
-the GPL-2.0-or-later license.
+---
 
-SayClip was originally created by AI Toolmaker (AI Toolmaker Official).
+# Author
 
-If SayClip helps you, attribution is appreciated:
-
-- Star the official repository:
-  https://github.com/aitoolmakerofficial/obs-sayclip
-- Credit the original author: AI Toolmaker (AI Toolmaker Official)
-- Subscribe to the YouTube channel:
-  https://www.youtube.com/@WorkingAiTools
-- Share the official project page:
-  https://github.com/aitoolmakerofficial/obs-sayclip
-
-Please do not present modified builds, forks, mirrors, or unofficial
-distributions as the official SayClip release.
-
-Official releases are published only through the official SayClip repository:
-
-https://github.com/aitoolmakerofficial/sayclip-plugin-for-obs
+Created and maintained by **AI Toolmaker**.
