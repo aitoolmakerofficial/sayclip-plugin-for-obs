@@ -210,4 +210,4 @@ distributions as the official SayClip release.
 
 Official releases are published only through the official SayClip repository:
 
-https://github.com/aitoolmakerofficial/obs-sayclip
+https://github.com/aitoolmakerofficial/sayclip-plugin-for-obs
