@@ -115,13 +115,14 @@ Any Faster Whisper language code may also be entered manually.
 
 ---
 
-# Rename Format
+# Rename Format And Folders
 
-Filename templates support the following variables:
+Rename templates support the following variables:
 
 - `{title}`
 - `{datetime}`
 - `{source}`
+- `{short_source}`
 - `{job_type}`
 - `{game}` (legacy alias)
 
@@ -142,6 +143,28 @@ Examples:
 ```
 
 Custom templates must include `{title}`.
+
+`{short_source}` builds a compact source ticker. Hyphen-separated names use
+the first character of each part (`dying-light-the-beast` -> `dltb`). A single
+long part uses its first three and last three characters
+(`demotormentedsouls2` -> `demls2`); names up to six characters stay unchanged.
+
+The same template can organize files into subfolders. In the settings window,
+enable `Make folder` beside Source, Short source, Clip type, or Time. SayClip
+inserts a folder boundary after that part and creates the directory when the
+file is renamed.
+
+```text
+{source}/{job_type}/{title}
+→ test-game/clip/clean-overtake.mkv
+
+{source}/{datetime}/{title}
+→ test-game/2026-05-27/clean-overtake.mkv
+```
+
+The folder containing the original file returned by OBS remains the root. For
+example, a replay initially saved under `Recordings/moments` stays under that
+root and can become `Recordings/moments/test-game/clip/...`.
 
 ---
 

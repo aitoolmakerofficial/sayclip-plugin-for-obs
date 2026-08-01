@@ -38,10 +38,11 @@ def test_rename_format_builder_parses_known_subset() -> None:
 
     assert custom is None
     assert parts == [
-        ("datetime", True),
-        ("title", True),
-        ("source", False),
-        ("job_type", False),
+        ("datetime", True, False),
+        ("source", False, False),
+        ("short_source", False, False),
+        ("job_type", False, False),
+        ("title", True, False),
     ]
 
 
@@ -49,15 +50,76 @@ def test_rename_format_builder_keeps_unsupported_custom_format() -> None:
     parts, custom = _rename_format_parts_from_template("{source}-{title}")
 
     assert custom == "{source}-{title}"
-    assert parts[-1] == ("title", True)
+    assert parts[-1] == ("title", True, False)
 
 
 def test_rename_format_builder_builds_enabled_parts_and_keeps_title() -> None:
     template = _rename_format_template_from_parts(
-        [("source", False), ("job_type", True), ("datetime", True), ("title", True)]
+        [
+            ("source", False, False),
+            ("job_type", True, False),
+            ("datetime", True, False),
+            ("title", True, False),
+        ]
     )
 
     assert template == "{job_type}__{datetime}__{title}"
+
+
+def test_rename_format_builder_parses_folder_boundaries() -> None:
+    parts, custom = _rename_format_parts_from_template("{source}/{job_type}/{datetime}__{title}")
+
+    assert custom is None
+    assert parts == [
+        ("source", True, True),
+        ("job_type", True, True),
+        ("datetime", True, False),
+        ("short_source", False, False),
+        ("title", True, False),
+    ]
+
+
+def test_rename_format_builder_builds_folder_boundaries() -> None:
+    template = _rename_format_template_from_parts(
+        [
+            ("source", True, True),
+            ("job_type", True, True),
+            ("datetime", False, False),
+            ("title", True, False),
+        ]
+    )
+
+    assert template == "{source}/{job_type}/{title}"
+
+
+def test_rename_format_builder_supports_short_source() -> None:
+    parts, custom = _rename_format_parts_from_template("{source}/{short_source}__{job_type}__{title}")
+
+    assert custom is None
+    assert parts == [
+        ("source", True, True),
+        ("short_source", True, False),
+        ("job_type", True, False),
+        ("datetime", False, False),
+        ("title", True, False),
+    ]
+
+
+def test_rename_format_builder_keeps_voice_title_out_of_folders() -> None:
+    parts, custom = _rename_format_parts_from_template("{title}__{source}/{job_type}")
+
+    assert custom == "{title}__{source}/{job_type}"
+    assert parts[-1] == ("title", True, False)
+
+    template = _rename_format_template_from_parts(
+        [
+            ("title", True, False),
+            ("source", True, True),
+            ("job_type", False, False),
+            ("datetime", False, False),
+        ]
+    )
+    assert template == "{title}__{source}"
 
 
 def test_move_rename_part_inserts_selected_part_at_target_index() -> None:

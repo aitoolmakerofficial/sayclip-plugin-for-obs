@@ -64,6 +64,32 @@ def test_completed_job_keeps_final_path_in_session(tmp_path: Path) -> None:
     assert not (tmp_path / "jobs.json").exists()
 
 
+def test_voice_pipeline_creates_format_folders_under_obs_output_folder(tmp_path: Path) -> None:
+    original = tmp_path / "moments" / "raw-clip.mkv"
+    original.parent.mkdir()
+    original.write_bytes(b"video")
+    config = load_config(tmp_path)
+    config.data["naming"]["format"] = "{source}/{job_type}/{title}"
+    api = BackendApi(
+        config,
+        audio_recorder=FakeAudioRecorder(),
+        stt_engine=FakeSpeechToTextEngine("clean overtake"),
+    )
+
+    api.create_job(
+        {
+            "type": "moment",
+            "original_path": str(original),
+            "source_title": "Test Game",
+        }
+    )
+    final_path = Path(api.list_jobs()["jobs"][0]["final_path"])
+
+    assert final_path == tmp_path / "moments" / "test-game" / "clip" / "clean-overtake.mkv"
+    assert final_path.read_bytes() == b"video"
+    assert not original.exists()
+
+
 def test_locked_file_failure_becomes_clean_job_error(tmp_path: Path) -> None:
     original = tmp_path / "Game" / "2026-05-27 21-31-12.mkv"
     original.parent.mkdir()

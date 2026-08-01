@@ -24,11 +24,18 @@ logger = logging.getLogger(__name__)
 STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
 RENAME_FORMAT_PARTS = (
     ("source", "Source", "{source}"),
+    ("short_source", "Short source", "{short_source}"),
     ("job_type", "Clip type", "{job_type}"),
     ("datetime", "Time", "{datetime}"),
     ("title", "Voice title", "{title}"),
 )
-DEFAULT_RENAME_FORMAT_PARTS = (("source", True), ("job_type", False), ("datetime", True), ("title", True))
+DEFAULT_RENAME_FORMAT_PARTS = (
+    ("source", True, False),
+    ("short_source", False, False),
+    ("job_type", False, False),
+    ("datetime", True, False),
+    ("title", True, False),
+)
 VOICE_TEST_SOURCE_TITLE = "Test Game"
 VOICE_TEST_FILENAME = "2026-05-27 22-10-44.mkv"
 
@@ -702,14 +709,17 @@ def run_ui(api: BackendApi, server: Any) -> int:
             current_filename_format = str(api.config.naming.get("format", "{source}__{datetime}__{title}"))
             rename_parts, self.custom_filename_format = _rename_format_parts_from_template(current_filename_format)
             self.updating_filename_format = False
-            self.rename_part_order = [part_key for part_key, _enabled in rename_parts]
-            self.rename_part_rows: list[tuple[QCheckBox, QComboBox]] = []
+            self.rename_part_order = [part_key for part_key, _enabled, _make_folder in rename_parts]
+            self.rename_part_rows: list[tuple[QCheckBox, QComboBox, QCheckBox]] = []
             self.rename_format_builder = QWidget()
             builder_layout = QGridLayout(self.rename_format_builder)
             builder_layout.setContentsMargins(0, 0, 0, 0)
             builder_layout.setHorizontalSpacing(8)
             builder_layout.setVerticalSpacing(6)
-            for row_index, (part_key, enabled) in enumerate(rename_parts):
+            builder_layout.addWidget(QLabel("Use"), 0, 0)
+            builder_layout.addWidget(QLabel("Part"), 0, 1)
+            builder_layout.addWidget(QLabel("Make folder"), 0, 2)
+            for row_index, (part_key, enabled, make_folder) in enumerate(rename_parts):
                 checkbox = QCheckBox()
                 checkbox.setChecked(enabled or part_key == "title")
                 checkbox.setEnabled(part_key != "title")
@@ -722,9 +732,20 @@ def run_ui(api: BackendApi, server: Any) -> int:
                     lambda _index, selected_row=row_index: self.move_rename_part(selected_row)
                 )
                 checkbox.stateChanged.connect(lambda _state: self.rename_format_changed())
-                self.rename_part_rows.append((checkbox, combo))
-                builder_layout.addWidget(checkbox, row_index, 0)
-                builder_layout.addWidget(combo, row_index, 1)
+                folder_checkbox = QCheckBox()
+                folder_checkbox.setChecked(make_folder)
+                folder_checkbox.setEnabled(part_key != "title")
+                folder_checkbox.setToolTip(
+                    "Create a folder boundary after this part."
+                    if part_key != "title"
+                    else "Voice title remains part of the filename."
+                )
+                folder_checkbox.stateChanged.connect(lambda _state: self.rename_format_changed())
+                self.rename_part_rows.append((checkbox, combo, folder_checkbox))
+                builder_layout.addWidget(checkbox, row_index + 1, 0)
+                builder_layout.addWidget(combo, row_index + 1, 1)
+                builder_layout.addWidget(folder_checkbox, row_index + 1, 2)
+            self.update_folder_checkbox_availability()
             builder_layout.setColumnStretch(1, 1)
             form.addRow("Rename format", self.rename_format_builder)
 
@@ -800,29 +821,58 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.rename_format_changed()
 
         def rename_format_changed(self) -> None:
+            if self.updating_filename_format:
+                return
             self.custom_filename_format = None
             self.custom_filename_notice.setText("")
             self.update_filename_preview()
 
-        def current_rename_parts(self) -> list[tuple[str, bool]]:
+        def current_rename_parts(self) -> list[tuple[str, bool, bool]]:
             parts = []
-            for row_index, (checkbox, _combo) in enumerate(self.rename_part_rows):
+            for row_index, (checkbox, _combo, folder_checkbox) in enumerate(self.rename_part_rows):
                 part_key = self.rename_part_order[row_index]
-                parts.append((part_key, checkbox.isChecked() or part_key == "title"))
+                parts.append(
+                    (
+                        part_key,
+                        checkbox.isChecked() or part_key == "title",
+                        folder_checkbox.isChecked() and part_key != "title",
+                    )
+                )
             return parts
 
         def set_rename_part_order(self, order: list[str]) -> None:
+            state_by_key = {
+                self.rename_part_order[row_index]: (checkbox.isChecked(), folder_checkbox.isChecked())
+                for row_index, (checkbox, _combo, folder_checkbox) in enumerate(self.rename_part_rows)
+            }
             self.updating_filename_format = True
             try:
                 self.rename_part_order = list(order)
                 for row_index, part_key in enumerate(order):
-                    checkbox, combo = self.rename_part_rows[row_index]
+                    checkbox, combo, folder_checkbox = self.rename_part_rows[row_index]
+                    enabled, make_folder = state_by_key.get(part_key, (part_key == "title", False))
                     combo.setCurrentIndex(max(0, combo.findData(part_key)))
-                    checkbox.setChecked(checkbox.isChecked() or part_key == "title")
+                    checkbox.setChecked(enabled or part_key == "title")
                     checkbox.setEnabled(part_key != "title")
                     checkbox.setToolTip("Voice title is always included." if part_key == "title" else "")
+                    folder_checkbox.setChecked(make_folder and part_key != "title")
+                self.update_folder_checkbox_availability()
             finally:
                 self.updating_filename_format = False
+
+        def update_folder_checkbox_availability(self) -> None:
+            title_index = self.rename_part_order.index("title")
+            for row_index, (_checkbox, _combo, folder_checkbox) in enumerate(self.rename_part_rows):
+                part_key = self.rename_part_order[row_index]
+                allowed = part_key != "title" and row_index < title_index
+                if not allowed:
+                    folder_checkbox.setChecked(False)
+                folder_checkbox.setEnabled(allowed)
+                folder_checkbox.setToolTip(
+                    "Create a folder boundary after this part."
+                    if allowed
+                    else "Folder parts must come before Voice title."
+                )
 
         def selected_filename_format(self) -> str:
             if self.custom_filename_format:
@@ -846,6 +896,7 @@ def run_ui(api: BackendApi, server: Any) -> int:
                 sample_datetime = "22-10-44"
             sample = (
                 template.replace("{source}", "test-game")
+                .replace("{short_source}", "tg")
                 .replace("{game}", "test-game")
                 .replace("{job_type}", "clip")
                 .replace("{datetime}", sample_datetime)
@@ -906,29 +957,56 @@ def run_ui(api: BackendApi, server: Any) -> int:
         signal.signal(signal.SIGINT, previous_sigint)
 
 
-def _rename_format_parts_from_template(template: str) -> tuple[list[tuple[str, bool]], str | None]:
+def _rename_format_parts_from_template(template: str) -> tuple[list[tuple[str, bool, bool]], str | None]:
     token_to_key = {token: key for key, _label, token in RENAME_FORMAT_PARTS}
     default_parts = list(DEFAULT_RENAME_FORMAT_PARTS)
-    segments = [segment.strip() for segment in template.split("__") if segment.strip()]
-    if not segments:
+    path_segments = [segment.strip() for segment in template.replace("\\", "/").split("/") if segment.strip()]
+    if not path_segments:
         return default_parts, None
-    keys = [token_to_key.get(segment) for segment in segments]
+    parsed: list[tuple[str | None, bool]] = []
+    title_in_folder = False
+    for path_index, path_segment in enumerate(path_segments):
+        tokens = [segment.strip() for segment in path_segment.split("__") if segment.strip()]
+        for token_index, token in enumerate(tokens):
+            make_folder = path_index < len(path_segments) - 1 and token_index == len(tokens) - 1
+            key = token_to_key.get(token)
+            parsed.append((key, make_folder))
+            title_in_folder = title_in_folder or (key == "title" and path_index < len(path_segments) - 1)
+
+    keys = [key for key, _make_folder in parsed]
     if any(key is None for key in keys) or len(set(keys)) != len(keys) or "title" not in keys:
         return default_parts, template
+    if title_in_folder:
+        return default_parts, template
 
-    ordered = [(str(key), True) for key in keys]
+    title_part = next((item for item in parsed if item[0] == "title"), ("title", False))
+    ordered = [(str(key), True, make_folder) for key, make_folder in parsed if key != "title"]
     for key, _label, _token in RENAME_FORMAT_PARTS:
-        if key not in keys:
-            ordered.append((key, False))
+        if key not in keys and key != "title":
+            ordered.append((key, False, False))
+    ordered.append(("title", True, bool(title_part[1])))
     return ordered, None
 
 
-def _rename_format_template_from_parts(parts: list[tuple[str, bool]]) -> str:
+def _rename_format_template_from_parts(parts: list[tuple[str, bool, bool]]) -> str:
     key_to_token = {key: token for key, _label, token in RENAME_FORMAT_PARTS}
-    tokens = [key_to_token[part_key] for part_key, enabled in parts if enabled or part_key == "title"]
-    if "{title}" not in tokens:
-        tokens.append("{title}")
-    return "__".join(tokens)
+    included = [(part_key, make_folder) for part_key, enabled, make_folder in parts if enabled or part_key == "title"]
+    title_index = next((index for index, (part_key, _folder) in enumerate(included) if part_key == "title"), len(included))
+    output = ""
+    included_title = False
+    for index, (part_key, make_folder) in enumerate(included):
+        token = key_to_token[part_key]
+        if output and not output.endswith("/"):
+            output += "__"
+        output += token
+        included_title = included_title or part_key == "title"
+        if make_folder and part_key != "title" and index < title_index:
+            output += "/"
+    if not included_title:
+        if output and not output.endswith("/"):
+            output += "__"
+        output += "{title}"
+    return output
 
 
 def _move_rename_part(order: list[str], selected_key: str, target_index: int) -> list[str]:

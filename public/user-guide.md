@@ -131,13 +131,14 @@ Important areas:
 
 ![SayClip settings window with rename format builder](<say_clip_ui_ (2).png>)
 
-Rename format controls the final filename.
+Rename format controls the final filename and optional subfolders.
 
 Available parts:
 
 - `{title}`: the title you say out loud.
 - `{datetime}`: date/time from the original OBS filename when possible, otherwise current time.
 - `{source}`: game/source title or parent-folder fallback.
+- `{short_source}`: compact game/source ticker for mixed clip folders.
 - `{job_type}`: short token for recording or clip.
 - `{game}`: legacy alias for `{source}`.
 
@@ -168,6 +169,55 @@ test-game__clip__2026-06-14_17-08-20__clean-overtake.mp4
 ```
 
 The voice title should always be included. If `{title}` is missing, your spoken title has nowhere to go.
+
+`{short_source}` abbreviates normalized source names:
+
+```text
+dying-light-the-beast-inactive -> dltbi
+banishers-ghosts-of-new-eden   -> bgone
+demotormentedsouls2            -> demls2
+```
+
+For names containing hyphens, it takes the first character of every part. For
+one long unbroken name, it combines the first three and last three characters.
+Names up to six characters remain unchanged. The ticker is intended for quick
+recognition and is not guaranteed to be unique.
+
+### Organizing Files Into Folders
+
+The visual format builder has a `Make folder` checkbox for Source, Short source,
+Clip type, and Time. It inserts a folder boundary after that part. Voice title
+remains the filename and cannot currently be made into a folder.
+
+For example, enable Source and Clip type and mark both as folders:
+
+```toml
+format = "{source}/{job_type}/{title}"
+```
+
+The result is organized automatically:
+
+```text
+test-game/clip/clean-overtake.mp4
+test-game/rec/full-session.mp4
+```
+
+Time can also be a folder. Set the date/time pattern to `%Y-%m-%d` and use:
+
+```toml
+format = "{source}/{datetime}/{title}"
+```
+
+This produces paths such as:
+
+```text
+test-game/2026-06-14/clean-overtake.mp4
+```
+
+SayClip treats the folder where OBS created the original media file as the
+root. If OBS saves replay-buffer files under `Recordings/moments`, a formatted
+clip remains below that folder, for example
+`Recordings/moments/test-game/clip/clean-overtake.mp4`.
 
 ## Clip And Recording Labels
 

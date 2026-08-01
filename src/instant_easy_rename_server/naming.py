@@ -24,6 +24,18 @@ def sanitize_slug(value: str, fallback: str = "untitled") -> str:
     return text or fallback
 
 
+def short_source_token(value: str, fallback: str = "") -> str:
+    source = sanitize_slug(value, fallback="")
+    if not source:
+        return fallback
+    parts = [part for part in source.split("-") if part]
+    if len(parts) > 1:
+        return "".join(part[0] for part in parts)
+    if len(source) <= 6:
+        return source
+    return f"{source[:3]}{source[-3:]}"
+
+
 def game_from_request(
     original_path: str,
     source_title: str | None,
@@ -50,6 +62,31 @@ def format_filename(
     job_type_tokens: dict[str, str] | None = None,
     unknown_source_token: str = "unknown-game",
 ) -> str:
+    return format_relative_media_path(
+        game=game,
+        job_type=job_type,
+        original_path=original_path,
+        title=title,
+        when=when,
+        filename_format=filename_format,
+        datetime_format=datetime_format,
+        job_type_tokens=job_type_tokens,
+        unknown_source_token=unknown_source_token,
+    ).as_posix()
+
+
+def format_relative_media_path(
+    *,
+    game: str,
+    job_type: str,
+    original_path: str | Path,
+    title: str,
+    when: datetime,
+    filename_format: str = "{source}__{datetime}__{title}",
+    datetime_format: str = "%Y-%m-%d_%H-%M-%S",
+    job_type_tokens: dict[str, str] | None = None,
+    unknown_source_token: str = "unknown-game",
+) -> Path:
     tokens = job_type_tokens or JOB_TYPE_TOKENS
     source = Path(original_path)
     extension = source.suffix
@@ -57,14 +94,26 @@ def format_filename(
     source_value = _source_token(game, unknown_source_token)
     values = {
         "source": source_value,
+        "short_source": short_source_token(source_value),
         "game": sanitize_slug(game, fallback=unknown_source_token),
         "job_type": tokens[job_type],
         "datetime": date_value,
         "title": sanitize_slug(title),
     }
-    name = filename_format.format(**values)
-    name = sanitize_filename_template_result(name)
-    return f"{name}{extension}"
+    if re.match(r"^[\\/]", filename_format) or re.match(r"^[A-Za-z]:", filename_format):
+        raise ValueError("Rename format must be a relative path.")
+
+    rendered = filename_format.format(**values)
+    raw_parts = re.split(r"[\\/]", rendered)
+    if any(part.strip() in {".", ".."} for part in raw_parts):
+        raise ValueError("Rename format cannot contain '.' or '..' path segments.")
+
+    parts = [sanitize_filename_template_result(part, fallback="") for part in raw_parts if part.strip()]
+    parts = [part for part in parts if part]
+    if not parts:
+        raise ValueError("Rename format produced an empty path.")
+    parts[-1] = f"{parts[-1]}{extension}"
+    return Path(*parts)
 
 
 def sanitize_filename_template_result(value: str, fallback: str = "untitled") -> str:

@@ -11,7 +11,7 @@ import time
 
 from .config import AppConfig
 from .jobs import Job
-from .naming import format_filename, next_available_path, sanitize_slug
+from .naming import format_relative_media_path, next_available_path, sanitize_slug
 
 
 class RenameError(RuntimeError):
@@ -38,18 +38,26 @@ class FileSystemMediaRenamer:
         if not title:
             raise RenameError("Recognized title became empty after sanitization.")
 
-        filename = format_filename(
-            game=job.game,
-            job_type=job.type,
-            original_path=source,
-            title=title,
-            when=datetime.now(timezone.utc).astimezone(),
-            filename_format=str(self.config.naming["format"]),
-            datetime_format=str(self.config.naming["datetime_format"]),
-            job_type_tokens=dict(self.config.naming["job_type_tokens"]),
-            unknown_source_token=str(self.config.naming["unknown_game_token"]),
-        )
-        target = next_available_path(source.with_name(filename))
+        try:
+            relative_path = format_relative_media_path(
+                game=job.game,
+                job_type=job.type,
+                original_path=source,
+                title=title,
+                when=datetime.now(timezone.utc).astimezone(),
+                filename_format=str(self.config.naming["format"]),
+                datetime_format=str(self.config.naming["datetime_format"]),
+                job_type_tokens=dict(self.config.naming["job_type_tokens"]),
+                unknown_source_token=str(self.config.naming["unknown_game_token"]),
+            )
+        except (KeyError, ValueError) as error:
+            raise RenameError(f"Invalid rename format: {error}") from error
+
+        target = next_available_path(source.parent / relative_path)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise RenameError(f"Could not create output folder: {target.parent}") from error
         self._replace_with_retry(source, target)
         return target
 

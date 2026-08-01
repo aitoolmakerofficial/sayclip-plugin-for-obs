@@ -23,6 +23,10 @@ venv_path = ""
 completed_at = ""
 
 [naming]
+# Folder boundaries can be added with slashes, for example:
+# format = "{source}/{job_type}/{title}"
+# Compact mixed-folder names can use {short_source}:
+# format = "{short_source}__{job_type}__{title}"
 format = "{source}__{datetime}__{title}"
 datetime_format = "%Y-%m-%d_%H-%M-%S"
 include_job_type = true
