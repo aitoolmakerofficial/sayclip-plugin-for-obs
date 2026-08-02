@@ -12,7 +12,7 @@ from .config import AppConfig
 from .naming import game_from_request
 
 
-JobType = Literal["recording", "moment"]
+JobType = Literal["recording", "moment", "extended_clip"]
 JobStatus = Literal[
     "created",
     "waiting_for_voice",
@@ -23,7 +23,7 @@ JobStatus = Literal[
     "error",
 ]
 
-VALID_JOB_TYPES = {"recording", "moment"}
+VALID_JOB_TYPES = {"recording", "moment", "extended_clip"}
 VALID_STATUSES = {
     "created",
     "waiting_for_voice",
@@ -50,7 +50,7 @@ class JobCreateRequest:
         job_type = payload.get("type")
         original_path = payload.get("original_path")
         if job_type not in VALID_JOB_TYPES:
-            raise ValueError("type must be one of: recording, moment")
+            raise ValueError("type must be one of: recording, moment, extended_clip")
         if not isinstance(original_path, str) or not original_path.strip():
             raise ValueError("original_path is required")
         return cls(

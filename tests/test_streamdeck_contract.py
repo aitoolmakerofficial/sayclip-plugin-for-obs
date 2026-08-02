@@ -1,5 +1,8 @@
 from instant_easy_rename_server.streamdeck import (
     BACKEND_BASE_URL,
+    EXTENDED_CLIP_CANCEL_PATH,
+    EXTENDED_CLIP_FINISH_PATH,
+    EXTENDED_CLIP_START_PATH,
     SAVE_MOMENT_PATH,
     SAVE_RECORDING_PATH,
     STATUS_PATH,
@@ -14,9 +17,14 @@ def test_streamdeck_contract_uses_shared_backend_endpoints() -> None:
     assert STATUS_PATH == "/api/status"
     assert SAVE_MOMENT_PATH == "/api/save/moment"
     assert SAVE_RECORDING_PATH == "/api/save/recording"
+    assert EXTENDED_CLIP_START_PATH == "/api/extended-clip/start"
+    assert EXTENDED_CLIP_FINISH_PATH == "/api/extended-clip/finish"
+    assert EXTENDED_CLIP_CANCEL_PATH == "/api/extended-clip/cancel"
 
 
 def test_streamdeck_status_titles_map_from_canonical_backend_phases() -> None:
+    assert title_for_status_snapshot({"ui_state": "recording"}) == StreamDeckTitle.RECORDING
+    assert title_for_status_snapshot({"ui_state": "processing"}) == StreamDeckTitle.PROCESSING
     assert title_for_status_snapshot({"phase": "idle", "busy": False}) == StreamDeckTitle.IDLE
     assert title_for_status_snapshot({"phase": "command_sent", "busy": True}) == StreamDeckTitle.BUSY
     assert title_for_status_snapshot({"phase": "waiting_for_obs", "busy": True}) == StreamDeckTitle.BUSY

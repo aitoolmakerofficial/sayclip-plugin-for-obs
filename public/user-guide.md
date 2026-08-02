@@ -175,12 +175,12 @@ The voice title should always be included. If `{title}` is missing, your spoken 
 ```text
 dying-light-the-beast-inactive -> dltbi
 banishers-ghosts-of-new-eden   -> bgone
-demotormentedsouls2            -> demls2
+reddeadredemption              -> reddeption
 ```
 
-For names containing hyphens, it takes the first character of every part. For
-one long unbroken name, it combines the first three and last three characters.
-Names up to six characters remain unchanged. The ticker is intended for quick
+For names containing hyphens, it takes the first character of every part. One
+unbroken name stays unchanged up to 10 characters; a longer one combines its
+first five and last five characters. The ticker is intended for quick
 recognition and is not guaranteed to be unique.
 
 ### Organizing Files Into Folders

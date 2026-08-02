@@ -1,6 +1,6 @@
 [app]
 name = "SayClip"
-version = "1.0.0"
+version = "2.0.0"
 
 [backend]
 host = "127.0.0.1"
@@ -38,9 +38,26 @@ on_conflict = "increment"
 [naming.job_type_tokens]
 recording = "rec"
 moment = "clip"
+extended_clip = "extended-clip"
 
 [jobs]
 max_jobs_in_ui = 50
+
+[extended_clip]
+enabled = true
+# Recording runs for this long before SayClip saves its sequence Replay snapshot.
+overlap_wait_seconds = 1.5
+min_video_packets = 16
+audio_packets = 8
+seam_decode_seconds = 2.0
+match_window_seconds = 3.0
+ffmpeg = "ffmpeg"
+ffprobe = "ffprobe"
+runtime_path = ".local/extended-clip/session.json"
+# Field-test rollout: MP4 or MKV sources currently publish a real MKV output.
+output_container = "mkv"
+# Sources are retained even after a successful merge until field testing is complete.
+delete_sources_after_success = false
 
 [audio]
 device = "default"

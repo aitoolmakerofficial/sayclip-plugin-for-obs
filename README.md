@@ -145,9 +145,9 @@ Examples:
 Custom templates must include `{title}`.
 
 `{short_source}` builds a compact source ticker. Hyphen-separated names use
-the first character of each part (`dying-light-the-beast` -> `dltb`). A single
-long part uses its first three and last three characters
-(`demotormentedsouls2` -> `demls2`); names up to six characters stay unchanged.
+the first character of each part (`dying-light-the-beast` -> `dltb`). One
+unbroken name stays unchanged up to 10 characters; a longer one uses its first
+five and last five characters (`reddeadredemption` -> `reddeption`).
 
 The same template can organize files into subfolders. In the settings window,
 enable `Make folder` beside Source, Short source, Clip type, or Time. SayClip

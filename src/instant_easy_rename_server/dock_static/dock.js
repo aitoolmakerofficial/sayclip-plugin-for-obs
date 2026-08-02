@@ -11,6 +11,8 @@ const ICONS = {
 
 const STATUS_META = {
   ready: { label: "READY", icon: "ready", title: "", subtitle: "" },
+  recording: { label: "RECORDING", icon: "save-recording", title: "Extended Clip", subtitle: "Do not stop recording in OBS." },
+  processing: { label: "PROCESSING", icon: "busy", title: "Extended Clip", subtitle: "Please wait." },
   speak: { label: "SPEAK", icon: "speak", title: "", subtitle: "" },
   done: { label: "DONE", icon: "done", title: "", subtitle: "" },
   error: { label: "ERROR", icon: "error", title: "", subtitle: "" },
@@ -24,6 +26,9 @@ const elements = {
   healthText: document.querySelector("#healthText"),
   saveMoment: document.querySelector("#saveMoment"),
   saveRecording: document.querySelector("#saveRecording"),
+  extendedClip: document.querySelector("#extendedClip"),
+  extendedClipLabel: document.querySelector("#extendedClipLabel"),
+  extendedClipSubtitle: document.querySelector("#extendedClipSubtitle"),
   statusPanel: document.querySelector("#statusPanel"),
   statusIcon: document.querySelector("#statusIcon"),
   statusChip: document.querySelector("#statusChip"),
@@ -71,6 +76,8 @@ function setChip(node, text, variant) {
 
 function visualStateForPhase(phase) {
   if (!bridgeConnected) return "offline";
+  if (phase === "recording") return "recording";
+  if (phase === "processing") return "processing";
   if (phase === "listening") return "speak";
   if (phase === "done") return "done";
   if (phase === "error") return "error";
@@ -115,14 +122,22 @@ function applyStatus(visual, options = {}) {
 
 function updateActionAvailability(visual) {
   const locked = Date.now() < actionLockUntil;
-  const baseDisabled = locked || !bridgeConnected || visual === "speak" || visual === "busy";
+  const baseDisabled = locked || !bridgeConnected;
   const moment = actionAvailability("save_moment");
   const recording = actionAvailability("save_recording");
+  const extended = latestStatus && latestStatus.extended_clip || { active: false, stage: "idle" };
+  const extendedActionName = extended.active ? "extended_clip_finish" : "extended_clip_start";
+  const extendedAction = actionAvailability(extendedActionName);
   elements.saveMoment.disabled = baseDisabled || !moment.enabled;
   elements.saveRecording.disabled = baseDisabled || !recording.enabled;
+  elements.extendedClip.disabled = baseDisabled || !extendedAction.enabled;
   elements.saveMoment.title = moment.reason ? actionReasonText(moment.reason) : "";
   elements.saveRecording.title = recording.reason ? actionReasonText(recording.reason) : "";
+  elements.extendedClip.title = extendedAction.reason ? actionReasonText(extendedAction.reason) : "";
   elements.saveRecording.classList.toggle("is-active", Boolean(latestStatus && latestStatus.obs && latestStatus.obs.recording_active));
+  elements.extendedClip.classList.toggle("is-active", Boolean(extended.active));
+  elements.extendedClipLabel.textContent = extended.stage === "processing" ? "PROCESSING" : extended.active ? "FINISH EXTENDED" : "EXTENDED CLIP";
+  elements.extendedClipSubtitle.textContent = extended.stage === "processing" ? "Processing" : extended.active ? "Finish" : "Start";
 }
 
 function actionAvailability(name) {
@@ -139,6 +154,12 @@ function actionReasonText(reason) {
   if (reason === "recording_inactive") return "Recording is not active.";
   if (reason === "bridge_disconnected") return "Bridge is not connected.";
   if (reason === "busy") return "Action is busy.";
+  if (reason === "obs_state_stale") return "OBS state is not available.";
+  if (reason === "recording_already_active") return "A recording is already active.";
+  if (reason === "extended_clip_active") return "Extended Clip is active.";
+  if (reason === "extended_clip_inactive") return "Extended Clip is not active.";
+  if (reason === "operation_busy") return "Another operation is still running.";
+  if (reason === "processing_committed") return "Extended Clip is already processing.";
   return "Action is unavailable.";
 }
 
@@ -218,7 +239,7 @@ function updateState(data, jobs) {
   updateHealth(data);
 
   const job = jobs && jobs.length ? jobs[0] : null;
-  const phase = String(data.phase || "idle");
+  const phase = String(data.ui_state || data.phase || "idle");
   const visual = visualStateForPhase(phase);
 
   let title;
@@ -284,7 +305,11 @@ async function sendAction(path, button) {
     showMessage("Bridge is not connected.", "error");
     return;
   }
-  const availability = path.includes("/recording") ? actionAvailability("save_recording") : actionAvailability("save_moment");
+  let actionName = "save_moment";
+  if (path.includes("/save/recording")) actionName = "save_recording";
+  if (path.includes("/extended-clip/start")) actionName = "extended_clip_start";
+  if (path.includes("/extended-clip/finish")) actionName = "extended_clip_finish";
+  const availability = actionAvailability(actionName);
   if (!availability.enabled) {
     showMessage(actionReasonText(availability.reason), "error");
     return;
@@ -326,6 +351,12 @@ elements.saveMoment.addEventListener("click", () => {
 
 elements.saveRecording.addEventListener("click", () => {
   sendAction("/api/save/recording", elements.saveRecording);
+});
+
+elements.extendedClip.addEventListener("click", () => {
+  const extended = latestStatus && latestStatus.extended_clip || { active: false };
+  const path = extended.active ? "/api/extended-clip/finish" : "/api/extended-clip/start";
+  sendAction(path, elements.extendedClip);
 });
 
 elements.openFolder.addEventListener("click", async () => {

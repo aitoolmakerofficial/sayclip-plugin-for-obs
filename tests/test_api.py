@@ -10,6 +10,7 @@ from instant_easy_rename_server.audio import AudioPayload, FakeAudioRecorder
 from instant_easy_rename_server.config import load_config
 from instant_easy_rename_server.jobs import Job
 from instant_easy_rename_server.server import create_server
+from instant_easy_rename_server.use_cases.extended_clip import ExtendedClipMergeResult, ExtendedClipService
 from instant_easy_rename_server.stt import FakeSpeechToTextEngine
 
 
@@ -24,7 +25,7 @@ def test_health_contract(tmp_path: Path) -> None:
 
     assert api.health() == {
         "app": "SayClip",
-        "version": "0.1.0",
+        "version": "2.0.0",
         "status": "ok",
     }
 
@@ -414,6 +415,9 @@ def test_valid_save_action_can_follow_action_specific_bridge_error(tmp_path: Pat
 def test_contract_enums_keep_expected_values() -> None:
     assert BridgeCommandAction.SAVE_MOMENT.value == "save_moment"
     assert BridgeCommandAction.SAVE_RECORDING.value == "save_recording"
+    assert BridgeCommandAction.EXTENDED_CLIP_START.value == "extended_clip_start"
+    assert BridgeCommandAction.EXTENDED_CLIP_FINISH.value == "extended_clip_finish"
+    assert BridgeCommandAction.EXTENDED_CLIP_CANCEL.value == "extended_clip_cancel"
     assert BridgeCommandStatus.PROCESSING.value == "processing"
     assert OperationPhase.LISTENING.value == "listening"
 
@@ -433,6 +437,7 @@ def test_http_dock_returns_html(tmp_path: Path) -> None:
         thread.join(timeout=2)
 
     assert "SayClip" in html
+    assert 'id="extendedClip"' in html
 
 
 def test_http_status_and_open_folder_no_job(tmp_path: Path) -> None:
@@ -519,6 +524,95 @@ def test_http_system_shutdown_sets_shutdown_flag_without_persisting_jobs(tmp_pat
     assert response["status"] == "shutting_down"
     assert api.shutdown_requested.is_set()
     assert not (tmp_path / "jobs.json").exists()
+
+
+class _ApiFakeExtendedMerger:
+    def __init__(self, output: Path) -> None:
+        self.output = output
+        self.calls = []
+
+    def merge(self, replay_path: str, recording_path: str) -> ExtendedClipMergeResult:
+        self.calls.append((replay_path, recording_path))
+        self.output.write_bytes(b"merged")
+        return ExtendedClipMergeResult(self.output, self.output.with_suffix(".diagnostics.json"), {"status": "ok"})
+
+
+def _extended_api(tmp_path: Path) -> tuple[BackendApi, _ApiFakeExtendedMerger]:
+    config = load_config(tmp_path)
+    merger = _ApiFakeExtendedMerger(tmp_path / "sequence.extended-clip.mkv")
+    service = ExtendedClipService(merger, tmp_path / "extended-session.json")
+    api = BackendApi(config, extended_clip_service=service)
+    api.record_bridge_state(
+        {"recording_active": False, "replay_buffer_active": True, "recording_paused": False}
+    )
+    return api, merger
+
+
+def test_extended_clip_start_projects_recording_state_and_actions(tmp_path: Path) -> None:
+    api, _ = _extended_api(tmp_path)
+
+    created = api.start_extended_clip()
+    command = api.poll_bridge_command()["command"]
+    api.record_bridge_command_result({"id": command["id"], "status": "processing", "event": "recording_started"})
+    api.record_bridge_command_result({"id": command["id"], "status": "processing", "event": "saving_replay"})
+    api.record_bridge_command_result(
+        {"id": command["id"], "status": "done", "replay_path": str(tmp_path / "replay.mp4")}
+    )
+    state = api.status()
+
+    assert created["accepted"] is True
+    assert state["ui_state"] == "recording"
+    assert state["extended_clip"] == {"active": True, "stage": "recording"}
+    assert state["actions"]["save_moment"]["enabled"] is True
+    assert state["actions"]["save_recording"] == {"enabled": False, "reason": "extended_clip_active"}
+    assert state["actions"]["extended_clip_finish"]["enabled"] is True
+    assert state["actions"]["extended_clip_cancel"]["enabled"] is True
+
+
+def test_extended_clip_finish_merges_then_creates_voice_job(tmp_path: Path) -> None:
+    api, merger = _extended_api(tmp_path)
+    start = api.start_extended_clip()
+    start_command = api.poll_bridge_command()["command"]
+    assert start_command["id"] == start["command_id"]
+    api.record_bridge_command_result(
+        {"id": start_command["id"], "status": "done", "replay_path": str(tmp_path / "replay.mp4")}
+    )
+
+    finish = api.finish_extended_clip()
+    finish_command = api.poll_bridge_command()["command"]
+    result = api.record_bridge_command_result(
+        {"id": finish_command["id"], "status": "done", "recording_path": str(tmp_path / "recording.mp4")}
+    )
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and api.extended_clip.active_session is not None:
+        time.sleep(0.02)
+
+    assert finish["accepted"] is True
+    assert result["status"] == "processing"
+    assert len(merger.calls) == 1
+    assert api.extended_clip.session.phase.value == "done"
+    assert api.list_jobs()["jobs"][0]["type"] == "extended_clip"
+    assert (tmp_path / "replay.mp4").exists() is False  # Fake paths were never touched or created.
+
+
+def test_extended_clip_cancel_does_not_merge_or_stop_replay_contract(tmp_path: Path) -> None:
+    api, merger = _extended_api(tmp_path)
+    api.start_extended_clip()
+    start_command = api.poll_bridge_command()["command"]
+    api.record_bridge_command_result(
+        {"id": start_command["id"], "status": "done", "replay_path": str(tmp_path / "replay.mp4")}
+    )
+
+    cancelled = api.cancel_extended_clip()
+    cancel_command = api.poll_bridge_command()["command"]
+    api.record_bridge_command_result(
+        {"id": cancel_command["id"], "status": "done", "recording_path": str(tmp_path / "recording.mp4")}
+    )
+
+    assert cancelled["accepted"] is True
+    assert merger.calls == []
+    assert api.extended_clip.session.phase.value == "cancelled"
+    assert api.status()["extended_clip"] == {"active": False, "stage": "idle"}
 
 
 def _get_json(url: str) -> dict:

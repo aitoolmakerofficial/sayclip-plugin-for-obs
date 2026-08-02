@@ -72,7 +72,7 @@ p { margin: 0; }
 
 .actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, .9fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .action-button, .primary-button {
@@ -120,6 +120,10 @@ p { margin: 0; }
 .action-button--record::before { background: radial-gradient(circle at 20% 0%, var(--record), transparent 58%); }
 .action-button--record.is-active { background: linear-gradient(180deg, rgba(255,77,94,.22), rgba(255,77,94,.06)), var(--record-bg); border-color: rgba(255,77,94,.68); }
 .action-button--record:hover:not(:disabled) { box-shadow: 0 0 0 1px rgba(255,77,94,.22), 0 14px 44px rgba(0,0,0,.38); }
+.action-button--extended { color: var(--violet-soft); }
+.action-button--extended::before { background: radial-gradient(circle at 20% 0%, var(--violet), transparent 60%); }
+.action-button--extended.is-active { background: linear-gradient(180deg, rgba(139,92,246,.22), rgba(139,92,246,.05)), var(--surface); border-color: rgba(196,181,253,.68); }
+.action-button--extended:hover:not(:disabled) { box-shadow: 0 0 0 1px rgba(139,92,246,.28), 0 14px 44px rgba(0,0,0,.38); }
 .action-button:disabled, .primary-button:disabled { cursor: default; opacity: .46; transform: none; box-shadow: none; }
 .button-icon, .status-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .button-icon {
@@ -157,6 +161,11 @@ p { margin: 0; }
   background:
     radial-gradient(circle at 50% 20%, rgba(255,77,94,.45), rgba(255,77,94,.08) 58%, transparent 76%),
     linear-gradient(135deg, #151b24 0%, #3a151b 58%, #070a0f 100%);
+}
+.action-button--extended .button-icon::before {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(196,181,253,.46), rgba(139,92,246,.1) 58%, transparent 76%),
+    linear-gradient(135deg, #151b24 0%, #28164a 58%, #070a0f 100%);
 }
 .button-icon svg {
   position: relative;
@@ -202,7 +211,10 @@ p { margin: 0; }
 .status-panel--error { color: var(--error); border-color: rgba(248,113,113,.58); }
 .status-panel--offline { color: var(--offline); }
 .status-panel--busy { color: var(--busy); }
+.status-panel--recording { color: var(--record); border-color: rgba(255,77,94,.58); }
+.status-panel--processing { color: var(--busy); }
 .status-panel--busy .status-icon { animation: rotateSoft 1.2s linear infinite; }
+.status-panel--processing .status-icon { animation: rotateSoft 1.2s linear infinite; }
 .status-panel--done .status-icon { animation: donePop .42s ease-out; }
 .status-panel--error .status-icon { animation: errorNudge .32s ease-out; }
 
@@ -229,6 +241,8 @@ p { margin: 0; }
 .chip.error { color: var(--error); background: rgba(248,113,113,.09); }
 .chip.offline { color: var(--offline); background: rgba(148,163,184,.08); }
 .chip.busy { color: var(--busy); background: rgba(251,191,36,.09); }
+.chip.recording { color: var(--record); background: rgba(255,77,94,.1); }
+.chip.processing { color: var(--busy); background: rgba(251,191,36,.09); }
 .chip.ok { color: var(--done); }
 .chip.active { color: var(--speak); }
 .chip.warning { color: var(--busy); }
@@ -300,5 +314,5 @@ p { margin: 0; }
 @keyframes donePop { 0% { transform: scale(.92); } 55% { transform: scale(1.08); } 100% { transform: scale(1); } }
 @keyframes errorNudge { 0%,100% { transform: translateX(0); } 30% { transform: translateX(-2px); } 70% { transform: translateX(2px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-@media (max-width: 319px) { .app { padding: 6px; } .actions { grid-template-columns: 1fr; } .button-subtitle { display: none; } .status-panel { grid-template-columns: 1fr; } .result-top { grid-template-columns: auto minmax(0, 1fr) auto; } .latest-game { display: none; } .filename { padding-left: 0; } }
+@media (max-width: 419px) { .app { padding: 6px; } .actions { grid-template-columns: 1fr; } .button-subtitle { display: none; } .status-panel { grid-template-columns: 1fr; } .result-top { grid-template-columns: auto minmax(0, 1fr) auto; } .latest-game { display: none; } .filename { padding-left: 0; } }
 @media (min-width: 420px) { .app { padding: 10px; } }

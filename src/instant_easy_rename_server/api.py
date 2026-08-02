@@ -21,6 +21,12 @@ from .config import AppConfig
 from .jobs import JobCreateRequest, JobStore
 from .renamer import MediaRenamer, RenameError, build_media_renamer
 from .stt import SpeechToTextEngine, SpeechToTextError, build_stt_engine
+from .use_cases.extended_clip import (
+    ExtendedClipMergeError,
+    ExtendedClipMerger,
+    ExtendedClipPhase,
+    ExtendedClipService,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +38,9 @@ DONE_STATUS_SECONDS = 1.8
 class BridgeCommandAction(str, Enum):
     SAVE_MOMENT = "save_moment"
     SAVE_RECORDING = "save_recording"
+    EXTENDED_CLIP_START = "extended_clip_start"
+    EXTENDED_CLIP_FINISH = "extended_clip_finish"
+    EXTENDED_CLIP_CANCEL = "extended_clip_cancel"
 
 
 class OperationPhase(str, Enum):
@@ -80,6 +89,7 @@ class BackendApi:
         stt_engine: SpeechToTextEngine | None = None,
         media_renamer: MediaRenamer | None = None,
         sound_player: ListeningSoundPlayer | None = None,
+        extended_clip_service: ExtendedClipService | None = None,
     ):
         self.config = config
         self.store = store or JobStore(config)
@@ -87,6 +97,19 @@ class BackendApi:
         self.stt_engine = stt_engine or build_stt_engine(config)
         self.media_renamer = media_renamer or build_media_renamer(config)
         self.sound_player = sound_player or build_listening_sound_player(config)
+        extended_config = config.extended_clip
+        self.extended_clip = extended_clip_service or ExtendedClipService(
+            ExtendedClipMerger(
+                config.root,
+                ffmpeg=str(extended_config.get("ffmpeg") or "ffmpeg"),
+                ffprobe=str(extended_config.get("ffprobe") or "ffprobe"),
+                min_video_packets=int(extended_config.get("min_video_packets", 16)),
+                audio_packets=int(extended_config.get("audio_packets", 8)),
+                seam_decode_seconds=float(extended_config.get("seam_decode_seconds", 2.0)),
+                match_window_seconds=float(extended_config.get("match_window_seconds", 3.0)),
+            ),
+            config.resolve_path(str(extended_config.get("runtime_path") or ".local/extended-clip/session.json")),
+        )
         self.errors: list[dict[str, Any]] = []
         self.mic_level = 0.0
         self.listening_started_at: datetime | None = None
@@ -146,22 +169,32 @@ class BackendApi:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
+            if self.extended_clip.active_session is not None and (
+                not self._bridge_is_connected() or not self._obs_state_is_fresh()
+            ):
+                self.extended_clip.fail("Extended Clip stopped because the OBS bridge state was lost.")
+                self.last_result = OperationPhase.ERROR.value
+                self.last_error = "Extended Clip stopped because the OBS bridge state was lost. Source files were kept."
+                self.last_result_expires_at = None
             jobs = self.store.list()
             active_command = self._active_command()
             active_job = self._active_job(active_command)
             active_job_status = active_job.status if active_job else None
             mic_error = self.audio_recorder.readiness_error()
             busy = active_command is not None or active_job is not None
+            operation_phase = self._operation_phase(active_command, active_job_status)
             return {
                 "backend": "ok",
                 "bridge": self._bridge_status(),
                 "busy": busy,
-                "phase": self._operation_phase(active_command, active_job_status).value,
+                "phase": operation_phase.value,
+                "ui_state": self._ui_state(operation_phase, active_job_status),
                 "active_action": active_command.action.value if active_command else None,
                 "active_job_id": active_job.id if active_job else None,
                 "last_result": self.last_result,
                 "last_error": self.last_error,
                 "obs": self._obs_status_payload(),
+                "extended_clip": self.extended_clip.public_payload(),
                 "actions": self._action_availability_payload(busy=busy),
                 "mic": {
                     "available": mic_error is None,
@@ -197,6 +230,30 @@ class BackendApi:
     def save_recording(self) -> dict[str, Any]:
         return self._enqueue_save_action(BridgeCommandAction.SAVE_RECORDING)
 
+    def start_extended_clip(self) -> dict[str, Any]:
+        with self._lock:
+            availability = self._extended_action_availability("extended_clip_start")
+            if not availability["enabled"]:
+                return {"ok": True, "accepted": False, "reason": availability["reason"]}
+            self.extended_clip.start()
+            return self._enqueue_bridge_command_locked(BridgeCommandAction.EXTENDED_CLIP_START)
+
+    def finish_extended_clip(self) -> dict[str, Any]:
+        with self._lock:
+            availability = self._extended_action_availability("extended_clip_finish")
+            if not availability["enabled"]:
+                return {"ok": True, "accepted": False, "reason": availability["reason"]}
+            self.extended_clip.begin_finish()
+            return self._enqueue_bridge_command_locked(BridgeCommandAction.EXTENDED_CLIP_FINISH)
+
+    def cancel_extended_clip(self) -> dict[str, Any]:
+        with self._lock:
+            availability = self._extended_action_availability("extended_clip_cancel")
+            if not availability["enabled"]:
+                return {"ok": True, "accepted": False, "reason": availability["reason"]}
+            self.extended_clip.begin_cancel()
+            return self._enqueue_bridge_command_locked(BridgeCommandAction.EXTENDED_CLIP_CANCEL, replace_active=True)
+
     def poll_bridge_command(self) -> dict[str, Any]:
         with self._lock:
             self.bridge_last_seen_at = datetime.now(timezone.utc).astimezone()
@@ -224,6 +281,12 @@ class BackendApi:
             command = self._find_bridge_command(command_id)
             if command is None:
                 return {"ok": False, "error": "Command not found"}
+            if command.action in {
+                BridgeCommandAction.EXTENDED_CLIP_START,
+                BridgeCommandAction.EXTENDED_CLIP_FINISH,
+                BridgeCommandAction.EXTENDED_CLIP_CANCEL,
+            }:
+                return self._record_extended_clip_result_locked(command, status, payload)
             command.status = status
             command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
             command.result = dict(payload)
@@ -256,10 +319,29 @@ class BackendApi:
             "replay_output_path": _optional_path_text(payload.get("replay_output_path")),
         }
         with self._lock:
+            was_recording = bool(self.obs_state.get("recording_active")) if self._obs_state_is_fresh() else False
             self.bridge_last_seen_at = datetime.now(timezone.utc).astimezone()
             self.obs_state = state
             self.obs_state_seen_at = self.bridge_last_seen_at
+            session = self.extended_clip.active_session
+            if (
+                session is not None
+                and session.phase == ExtendedClipPhase.CAPTURING
+                and was_recording
+                and not state["recording_active"]
+            ):
+                self.extended_clip.manual_recording_stop(state.get("recording_output_path"))
+                self.last_result = OperationPhase.DONE.value
+                self.last_result_expires_at = datetime.now(timezone.utc).astimezone() + timedelta(seconds=DONE_STATUS_SECONDS)
         return {"ok": True}
+
+    def record_extended_clip_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+        event = str(payload.get("event") or "")
+        with self._lock:
+            if event == "recording_stopped":
+                self.extended_clip.manual_recording_stop(_optional_path_text(payload.get("recording_path")))
+                return {"ok": True}
+            return {"ok": False, "error": "Unknown Extended Clip bridge event"}
 
     def manual_voice_test_original_path(self, filename: str) -> Path:
         with self._lock:
@@ -277,20 +359,29 @@ class BackendApi:
             available = self._save_action_availability(action, busy=False)
             if not available["enabled"]:
                 return {"ok": True, "accepted": False, "reason": available["reason"]}
-            current = datetime.now(timezone.utc).astimezone()
-            command = BridgeCommand(
-                id=f"{current.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
-                action=action,
-                status=BridgeCommandStatus.PENDING,
-                created_at=current.isoformat(),
-            )
-            self.bridge_commands.insert(0, command)
-            self.bridge_commands = self.bridge_commands[:25]
+            return self._enqueue_bridge_command_locked(action)
+
+    def _enqueue_bridge_command_locked(
+        self,
+        action: BridgeCommandAction,
+        *,
+        replace_active: bool = False,
+    ) -> dict[str, Any]:
+        current = datetime.now(timezone.utc).astimezone()
+        command = BridgeCommand(
+            id=f"{current.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
+            action=action,
+            status=BridgeCommandStatus.PENDING,
+            created_at=current.isoformat(),
+        )
+        self.bridge_commands.insert(0, command)
+        self.bridge_commands = self.bridge_commands[:25]
+        if replace_active or self.active_command_id is None:
             self.active_command_id = command.id
-            self.last_result = None
-            self.last_result_expires_at = None
-            self.last_error = None
-            return {"ok": True, "accepted": True, "command_id": command.id}
+        self.last_result = None
+        self.last_result_expires_at = None
+        self.last_error = None
+        return {"ok": True, "accepted": True, "command_id": command.id}
 
     def request_shutdown(self) -> dict[str, Any]:
         logger.debug("Backend shutdown requested")
@@ -402,6 +493,111 @@ class BackendApi:
             command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
             self._finish_operation_locked(command)
 
+    def _record_extended_clip_result_locked(
+        self,
+        command: BridgeCommand,
+        status: BridgeCommandStatus,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        command.status = status
+        command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+        command.result = dict(payload)
+        if status == BridgeCommandStatus.PROCESSING:
+            event = str(payload.get("event") or "")
+            if command.action == BridgeCommandAction.EXTENDED_CLIP_START:
+                if event == "recording_started":
+                    self.extended_clip.mark_recording_started()
+                elif event == "saving_replay":
+                    self.extended_clip.mark_saving_replay()
+            return {"ok": True}
+        if status == BridgeCommandStatus.ERROR:
+            error = str(payload.get("error") or "OBS bridge command failed.")
+            self.extended_clip.fail(error)
+            self.last_result = OperationPhase.ERROR.value
+            self.last_error = error
+            self.last_result_expires_at = None
+            self._finish_operation_locked(command)
+            return {"ok": True}
+        if command.action == BridgeCommandAction.EXTENDED_CLIP_START:
+            replay_path = str(payload.get("replay_path") or payload.get("original_path") or "").strip()
+            if not replay_path:
+                self.extended_clip.fail("OBS did not provide an Extended Clip replay path.")
+                command.status = BridgeCommandStatus.ERROR
+                self._finish_operation_locked(command)
+                return {"ok": False, "error": "Replay path is required"}
+            self.extended_clip.mark_capturing(replay_path, payload)
+            self._finish_operation_locked(command)
+            return {"ok": True}
+        if command.action == BridgeCommandAction.EXTENDED_CLIP_CANCEL:
+            self.extended_clip.cancel(_optional_path_text(payload.get("recording_path")))
+            self.last_result = OperationPhase.DONE.value
+            self.last_result_expires_at = datetime.now(timezone.utc).astimezone() + timedelta(seconds=DONE_STATUS_SECONDS)
+            self._finish_operation_locked(command)
+            return {"ok": True}
+        recording_path = str(payload.get("recording_path") or payload.get("original_path") or "").strip()
+        if not recording_path:
+            self.extended_clip.fail("OBS did not provide an Extended Clip recording path.")
+            command.status = BridgeCommandStatus.ERROR
+            self._finish_operation_locked(command)
+            return {"ok": False, "error": "Recording path is required"}
+        command.status = BridgeCommandStatus.PROCESSING
+        thread = threading.Thread(
+            target=self._process_extended_clip,
+            args=(command.id, recording_path, dict(payload)),
+            daemon=True,
+        )
+        thread.start()
+        return {"ok": True, "status": "processing"}
+
+    def _process_extended_clip(self, command_id: str, recording_path: str, metadata: dict[str, Any]) -> None:
+        try:
+            result = self.extended_clip.merge(recording_path)
+            with self._lock:
+                session = self.extended_clip.active_session
+                request = JobCreateRequest.from_payload(
+                    {
+                        "type": "extended_clip",
+                        "original_path": str(result.output_path),
+                        "game_hint": metadata.get("game_hint") or (session.game_hint if session else None),
+                        "source_title": metadata.get("source_title") or (session.source_title if session else None),
+                        "created_by": "extended_clip",
+                    }
+                )
+                job = self.store.create(request)
+                command = self._find_bridge_command(command_id)
+                if command:
+                    command.job_id = job.id
+                self._mark_active_job_locked(job.id)
+                self.extended_clip.mark_naming()
+            self._process_voice(job.id)
+            with self._lock:
+                completed_job = self._job_by_id(job.id)
+                command = self._find_bridge_command(command_id)
+                if completed_job and completed_job.status == "done" and completed_job.final_path:
+                    self.extended_clip.complete(completed_job.final_path)
+                    if command:
+                        command.status = BridgeCommandStatus.DONE
+                else:
+                    error = completed_job.error if completed_job else "Extended Clip naming job disappeared."
+                    self.extended_clip.fail(error or "Extended Clip naming failed.")
+                    if command:
+                        command.status = BridgeCommandStatus.ERROR
+                if command:
+                    command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+                    self._finish_operation_locked(command)
+        except (ExtendedClipMergeError, OSError, ValueError) as error:
+            logger.exception("Extended Clip processing failed: command_id=%s", command_id)
+            with self._lock:
+                self.extended_clip.fail(str(error))
+                self.last_result = OperationPhase.ERROR.value
+                self.last_error = str(error)
+                self.last_result_expires_at = None
+                command = self._find_bridge_command(command_id)
+                if command:
+                    command.status = BridgeCommandStatus.ERROR
+                    command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+                    self._finish_operation_locked(command)
+
     def _set_mic_level(self, value: float) -> None:
         self.mic_level = max(0.0, min(1.0, value))
         logger.debug("Mic level updated: %s", self.mic_level)
@@ -497,9 +693,18 @@ class BackendApi:
         return {
             "save_moment": self._save_action_availability(BridgeCommandAction.SAVE_MOMENT, busy=busy),
             "save_recording": self._save_action_availability(BridgeCommandAction.SAVE_RECORDING, busy=busy),
+            "extended_clip_start": self._extended_action_availability("extended_clip_start"),
+            "extended_clip_finish": self._extended_action_availability("extended_clip_finish"),
+            "extended_clip_cancel": self._extended_action_availability("extended_clip_cancel"),
         }
 
     def _save_action_availability(self, action: BridgeCommandAction, *, busy: bool) -> dict[str, Any]:
+        session = self.extended_clip.active_session
+        if action == BridgeCommandAction.SAVE_RECORDING and session is not None:
+            return {"enabled": False, "reason": "extended_clip_active"}
+        if action == BridgeCommandAction.SAVE_MOMENT and session is not None:
+            if session.phase != ExtendedClipPhase.CAPTURING:
+                return {"enabled": False, "reason": "extended_clip_active"}
         if busy:
             return {"enabled": False, "reason": "busy"}
         if not self._bridge_is_connected():
@@ -511,6 +716,47 @@ class BackendApi:
         if action == BridgeCommandAction.SAVE_RECORDING and not self.obs_state.get("recording_active"):
             return {"enabled": False, "reason": "recording_inactive"}
         return {"enabled": True, "reason": None}
+
+    def _extended_action_availability(self, name: str) -> dict[str, Any]:
+        if not bool(self.config.extended_clip.get("enabled", True)):
+            return {"enabled": False, "reason": "feature_disabled"}
+        if not self._bridge_is_connected():
+            return {"enabled": False, "reason": "bridge_disconnected"}
+        if not self._obs_state_is_fresh():
+            return {"enabled": False, "reason": "obs_state_stale"}
+        session = self.extended_clip.active_session
+        active_command = self._active_command()
+        active_job = self._active_job(active_command)
+        ordinary_busy = active_command is not None or active_job is not None
+        if name == "extended_clip_start":
+            if session is not None:
+                return {"enabled": False, "reason": "extended_clip_active"}
+            if ordinary_busy:
+                return {"enabled": False, "reason": "operation_busy"}
+            if self.obs_state.get("recording_active"):
+                return {"enabled": False, "reason": "recording_already_active"}
+            if not self.obs_state.get("replay_buffer_active"):
+                return {"enabled": False, "reason": "replay_buffer_inactive"}
+            return {"enabled": True, "reason": None}
+        if session is None:
+            return {"enabled": False, "reason": "extended_clip_inactive"}
+        if name == "extended_clip_finish":
+            if session.phase != ExtendedClipPhase.CAPTURING:
+                reason = "processing_committed" if session.stage == "processing" else "operation_busy"
+                return {"enabled": False, "reason": reason}
+            if ordinary_busy:
+                return {"enabled": False, "reason": "operation_busy"}
+            return {"enabled": True, "reason": None}
+        if name == "extended_clip_cancel":
+            if session.phase not in {
+                ExtendedClipPhase.STARTING_RECORDING,
+                ExtendedClipPhase.WAITING_OVERLAP,
+                ExtendedClipPhase.SAVING_REPLAY,
+                ExtendedClipPhase.CAPTURING,
+            }:
+                return {"enabled": False, "reason": "processing_committed"}
+            return {"enabled": True, "reason": None}
+        return {"enabled": False, "reason": "unknown_action"}
 
     def _active_command(self) -> BridgeCommand | None:
         if not self.active_command_id:
@@ -578,6 +824,30 @@ class BackendApi:
         if command.status == BridgeCommandStatus.DONE:
             return OperationPhase.DONE
         return OperationPhase.IDLE
+
+    def _ui_state(self, operation_phase: OperationPhase, active_job_status: str | None) -> str:
+        if not self._bridge_is_connected():
+            return "offline"
+        session = self.extended_clip.active_session
+        if operation_phase == OperationPhase.ERROR or (self.extended_clip.session and self.extended_clip.session.phase == ExtendedClipPhase.ERROR):
+            return "error"
+        if active_job_status in {"listening", "waiting_for_voice"}:
+            return "listening"
+        if session is not None and session.stage == "processing":
+            return "processing"
+        if session is not None and session.stage == "recording":
+            return "recording"
+        if operation_phase in {
+            OperationPhase.COMMAND_SENT,
+            OperationPhase.WAITING_FOR_OBS,
+            OperationPhase.WAITING_FOR_FILE,
+            OperationPhase.TRANSCRIBING,
+            OperationPhase.RENAMING,
+        }:
+            return "processing"
+        if operation_phase == OperationPhase.DONE:
+            return "done"
+        return "ready"
 
     def _job_for_command(self, command: BridgeCommand | None):
         if not command or not command.job_id:

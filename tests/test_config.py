@@ -7,9 +7,12 @@ def test_load_default_config_when_file_missing(tmp_path: Path) -> None:
     config = load_config(tmp_path)
 
     assert config.app_name == "SayClip"
-    assert config.app_version == "0.1.0"
+    assert config.app_version == "2.0.0"
     assert config.backend_host == "127.0.0.1"
     assert config.audio["max_record_seconds"] == 8
+    assert config.extended_clip["output_container"] == "mkv"
+    assert config.extended_clip["match_window_seconds"] == 3.0
+    assert config.extended_clip["delete_sources_after_success"] is False
 
 
 def test_load_config_migrates_legacy_app_name(tmp_path: Path) -> None:
@@ -20,6 +23,15 @@ def test_load_config_migrates_legacy_app_name(tmp_path: Path) -> None:
     assert config.app_name == "SayClip"
     assert config.audio["beep_start"] is True
     assert config.audio["beep_end"] is True
+
+
+def test_runtime_version_cannot_be_downgraded_by_local_config(tmp_path: Path) -> None:
+    (tmp_path / "config.toml").write_text('[app]\nversion = "1.0.0"\n', encoding="utf-8")
+
+    config = load_config(tmp_path)
+
+    assert config.app_version == "2.0.0"
+    assert config.data["app"]["version"] == "2.0.0"
 
 
 def test_default_jobs_limit_is_latest_50(tmp_path: Path) -> None:

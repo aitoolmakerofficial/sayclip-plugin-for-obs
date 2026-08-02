@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any
 import tomllib
 
+from . import APP_VERSION
+
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "app": {"name": "SayClip", "version": "0.1.0"},
+    "app": {"name": "SayClip", "version": APP_VERSION},
     "backend": {
         "host": "127.0.0.1",
         "port": 17891,
@@ -36,10 +38,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "title_language_mode": "keep",
         "keep_extension": True,
         "on_conflict": "increment",
-        "job_type_tokens": {"recording": "rec", "moment": "clip"},
+        "job_type_tokens": {"recording": "rec", "moment": "clip", "extended_clip": "extended-clip"},
     },
     "jobs": {
         "max_jobs_in_ui": 50,
+    },
+    "extended_clip": {
+        "enabled": True,
+        "overlap_wait_seconds": 1.5,
+        "min_video_packets": 16,
+        "audio_packets": 8,
+        "seam_decode_seconds": 2.0,
+        "match_window_seconds": 3.0,
+        "ffmpeg": "ffmpeg",
+        "ffprobe": "ffprobe",
+        "runtime_path": ".local/extended-clip/session.json",
+        "output_container": "mkv",
+        "delete_sources_after_success": False,
     },
     "audio": {
         "device": "fake",
@@ -81,7 +96,7 @@ class AppConfig:
 
     @property
     def app_version(self) -> str:
-        return str(self.data["app"]["version"])
+        return APP_VERSION
 
     @property
     def backend_host(self) -> str:
@@ -107,6 +122,10 @@ class AppConfig:
     def stt(self) -> dict[str, Any]:
         return self.data["stt"]
 
+    @property
+    def extended_clip(self) -> dict[str, Any]:
+        return self.data["extended_clip"]
+
     def resolve_path(self, value: str) -> Path:
         path = Path(value)
         if path.is_absolute():
@@ -122,6 +141,7 @@ def load_config(root: Path | str | None = None, filename: str = "config.toml") -
         with path.open("rb") as handle:
             data = _deep_merge(data, tomllib.load(handle))
     _migrate_legacy_branding(data)
+    data["app"]["version"] = APP_VERSION
     _drop_legacy_job_persistence(data)
     return AppConfig(root=project_root, data=data)
 

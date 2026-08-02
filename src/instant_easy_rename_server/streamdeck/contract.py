@@ -9,6 +9,9 @@ HEALTH_PATH = "/health"
 STATUS_PATH = "/api/status"
 SAVE_MOMENT_PATH = "/api/save/moment"
 SAVE_RECORDING_PATH = "/api/save/recording"
+EXTENDED_CLIP_START_PATH = "/api/extended-clip/start"
+EXTENDED_CLIP_FINISH_PATH = "/api/extended-clip/finish"
+EXTENDED_CLIP_CANCEL_PATH = "/api/extended-clip/cancel"
 
 
 class StreamDeckTitle(str, Enum):
@@ -20,13 +23,19 @@ class StreamDeckTitle(str, Enum):
     ERROR = "ERROR"
     OFFLINE = "OFFLINE"
     SENT = "SENT"
+    RECORDING = "RECORDING"
+    PROCESSING = "PROCESSING"
 
 
 def title_for_status_snapshot(snapshot: dict[str, Any] | None, *, reachable: bool = True) -> StreamDeckTitle:
     if not reachable or not snapshot:
         return StreamDeckTitle.OFFLINE
 
-    phase = str(snapshot.get("phase") or "idle")
+    phase = str(snapshot.get("ui_state") or snapshot.get("phase") or "idle")
+    if phase == "recording":
+        return StreamDeckTitle.RECORDING
+    if phase == "processing":
+        return StreamDeckTitle.PROCESSING
     if phase == "idle":
         return StreamDeckTitle.BUSY if snapshot.get("busy") else StreamDeckTitle.IDLE
     if phase in {"listening", "recording_voice_title"}:

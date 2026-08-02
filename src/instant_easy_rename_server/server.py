@@ -12,6 +12,7 @@ import threading
 from urllib.parse import urlparse
 
 from .api import BackendApi
+from . import APP_VERSION
 from .config import load_config
 
 
@@ -21,7 +22,7 @@ DOCK_STATIC_DIR = Path(__file__).resolve().parent / "dock_static"
 
 def make_handler(api: BackendApi) -> type[BaseHTTPRequestHandler]:
     class SayClipHandler(BaseHTTPRequestHandler):
-        server_version = "SayClip/0.1.0"
+        server_version = f"SayClip/{APP_VERSION}"
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
@@ -79,12 +80,28 @@ def make_handler(api: BackendApi) -> type[BaseHTTPRequestHandler]:
                     result = api.save_recording()
                     self._send_json(_save_status_code(result), result)
                     return
+                if path == "/api/extended-clip/start":
+                    result = api.start_extended_clip()
+                    self._send_json(_save_status_code(result), result)
+                    return
+                if path == "/api/extended-clip/finish":
+                    result = api.finish_extended_clip()
+                    self._send_json(_save_status_code(result), result)
+                    return
+                if path == "/api/extended-clip/cancel":
+                    result = api.cancel_extended_clip()
+                    self._send_json(_save_status_code(result), result)
+                    return
                 if path == "/api/bridge/command-result":
                     result = api.record_bridge_command_result(payload)
                     self._send_json(200 if result.get("ok") else 404, result)
                     return
                 if path == "/api/bridge/state":
                     result = api.record_bridge_state(payload)
+                    self._send_json(200 if result.get("ok") else 422, result)
+                    return
+                if path == "/api/bridge/extended-clip-event":
+                    result = api.record_extended_clip_event(payload)
                     self._send_json(200 if result.get("ok") else 422, result)
                     return
                 self._send_json(404, {"error": "not_found"})

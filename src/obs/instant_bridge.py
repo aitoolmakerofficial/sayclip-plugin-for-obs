@@ -22,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "SayClip"
-APP_VERSION = "0.1.0"
+APP_VERSION = "2.0.0"
 YOUTUBE_GUIDE_URL = "https://www.youtube.com/watch?v=VeY80kJk3RM&list=PLOz1A1R4o9mg"
 OBS_DOCK_URL = "http://127.0.0.1:17891/dock"
 STREAMDECK_PLUGIN_REPOSITORY_URL = "https://github.com/aitoolmakerofficial/obs-sayclip-plugin-streamdeck"
@@ -43,6 +43,9 @@ DEFAULT_CONFIG = {
         "venv_path": "",
         "completed_at": "",
     },
+    "extended_clip": {
+        "overlap_wait_seconds": 1.5,
+    },
 }
 
 _state = {
@@ -51,6 +54,8 @@ _state = {
     "title_source_name": "",
     "pending_recording": None,
     "pending_replay": None,
+    "extended_clip": None,
+    "extended_timer_registered": False,
     "hotkeys": {},
     "background": {},
     "polling_registered": False,
@@ -83,6 +88,7 @@ def script_load(settings):
 
 def script_unload():
     _log("Unloading SayClip Bridge")
+    _cancel_owned_extended_recording("bridge_unload")
     if obs:
         try:
             obs.obs_frontend_remove_event_callback(_on_frontend_event)
@@ -93,6 +99,12 @@ def script_unload():
             _state["polling_registered"] = False
         except Exception as error:
             _log("Could not remove command polling timer: %s" % error)
+        if _state.get("extended_timer_registered"):
+            try:
+                obs.timer_remove(_extended_clip_save_replay)
+            except Exception:
+                pass
+            _state["extended_timer_registered"] = False
     _unregister_hotkeys()
     stop_backend()
 
@@ -331,13 +343,189 @@ def save_replay_buffer_and_voice_rename(command_id=None):
     return True
 
 
+def start_extended_clip(command_id):
+    if _state.get("extended_clip") is not None:
+        _report_obs_error(command_id, "An Extended Clip is already active.")
+        return False
+    if _obs_call_bool("obs_frontend_recording_active"):
+        _report_obs_error(command_id, "Recording is already active.")
+        return False
+    if not _obs_call_bool("obs_frontend_replay_buffer_active"):
+        _report_obs_error(command_id, "Replay buffer is not active.")
+        return False
+    _state["extended_clip"] = {
+        "mode": "starting",
+        "command_id": command_id,
+        "owned_recording": False,
+        "context": collect_obs_context(),
+    }
+    if not _obs_invoke("obs_frontend_recording_start"):
+        _state["extended_clip"] = None
+        _report_obs_error(command_id, "OBS recording start API is unavailable.")
+        return False
+    return True
+
+
+def finish_extended_clip(command_id):
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict) or context.get("mode") != "capturing":
+        _report_obs_error(command_id, "Extended Clip is not ready to finish.")
+        return False
+    if not context.get("owned_recording") or not _obs_call_bool("obs_frontend_recording_active"):
+        _report_obs_error(command_id, "Extended Clip recording is not active.")
+        return False
+    context["mode"] = "finishing"
+    context["command_id"] = command_id
+    if not _obs_invoke("obs_frontend_recording_stop"):
+        context["mode"] = "capturing"
+        _report_obs_error(command_id, "OBS recording stop API is unavailable.")
+        return False
+    return True
+
+
+def cancel_extended_clip(command_id):
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict):
+        _report_obs_error(command_id, "Extended Clip is not active.")
+        return False
+    context["mode"] = "cancelling"
+    context["command_id"] = command_id
+    if not context.get("owned_recording"):
+        if _obs_call_bool("obs_frontend_recording_active"):
+            context["owned_recording"] = True
+        else:
+            context["mode"] = "cancel_pending_start"
+            return True
+    if not _obs_call_bool("obs_frontend_recording_active"):
+        _complete_extended_recording_event(None)
+        return True
+    if not _obs_invoke("obs_frontend_recording_stop"):
+        _report_obs_error(command_id, "OBS recording stop API is unavailable.")
+        return False
+    return True
+
+
+def _extended_clip_save_replay():
+    if obs and _state.get("extended_timer_registered"):
+        try:
+            obs.timer_remove(_extended_clip_save_replay)
+        except Exception:
+            pass
+    _state["extended_timer_registered"] = False
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict) or context.get("mode") != "waiting_overlap":
+        return
+    command_id = context.get("command_id")
+    if not _obs_call_bool("obs_frontend_replay_buffer_active"):
+        _cancel_owned_extended_recording("replay_buffer_inactive")
+        _report_obs_error(command_id, "Replay buffer stopped before the Extended Clip snapshot.")
+        return
+    context["mode"] = "saving_replay"
+    _post_bridge_command_result({"id": command_id, "status": "processing", "event": "saving_replay"})
+    if not _obs_invoke("obs_frontend_replay_buffer_save"):
+        _cancel_owned_extended_recording("replay_save_failed")
+        _report_obs_error(command_id, "OBS replay-buffer save API is unavailable.")
+
+
+def _schedule_extended_replay_save():
+    config = load_bridge_config()
+    delay = float(config.get("extended_clip", {}).get("overlap_wait_seconds", 1.5))
+    delay_ms = max(1, int(delay * 1000))
+    if obs and hasattr(obs, "timer_add"):
+        _state["extended_timer_registered"] = True
+        obs.timer_add(_extended_clip_save_replay, delay_ms)
+        return
+    _extended_clip_save_replay()
+
+
+def _complete_extended_replay_event(path):
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict) or context.get("mode") != "saving_replay":
+        return False
+    command_id = context.get("command_id")
+    if not path:
+        _cancel_owned_extended_recording("missing_replay_path")
+        _report_obs_error(command_id, "OBS did not provide an Extended Clip replay path.")
+        return False
+    payload = {
+        "id": command_id,
+        "status": "done",
+        "replay_path": str(path),
+        **dict(context.get("context") or {}),
+    }
+    _post_bridge_command_result(payload)
+    context["mode"] = "capturing"
+    context["command_id"] = None
+    context["replay_path"] = str(path)
+    return True
+
+
+def _complete_extended_recording_event(path):
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict):
+        return False
+    mode = context.get("mode")
+    command_id = context.get("command_id")
+    context["owned_recording"] = False
+    if mode in {"finishing", "cancelling"} and command_id:
+        payload = {
+            "id": command_id,
+            "status": "done",
+            "recording_path": str(path) if path else None,
+            **dict(context.get("context") or {}),
+        }
+        _post_bridge_command_result(payload)
+    elif mode not in {"abandoning"}:
+        try:
+            _post_json(
+                load_bridge_config(),
+                "/api/bridge/extended-clip-event",
+                {"event": "recording_stopped", "recording_path": str(path) if path else None},
+            )
+        except Exception as error:
+            _log("Could not report manual Extended Clip recording stop: %s" % error)
+    _state["extended_clip"] = None
+    return True
+
+
+def _cancel_owned_extended_recording(reason):
+    context = _state.get("extended_clip")
+    if not isinstance(context, dict):
+        return False
+    if context.get("owned_recording") and _obs_call_bool("obs_frontend_recording_active"):
+        context["mode"] = "abandoning"
+        _log("Stopping owned Extended Clip recording: %s" % reason)
+        return _obs_invoke("obs_frontend_recording_stop")
+    _state["extended_clip"] = None
+    return True
+
+
 def _on_frontend_event(event):
+    if obs and event == getattr(obs, "OBS_FRONTEND_EVENT_RECORDING_STARTED", object()):
+        extended = _state.get("extended_clip")
+        if isinstance(extended, dict) and extended.get("mode") == "cancel_pending_start":
+            extended["owned_recording"] = True
+            extended["mode"] = "cancelling"
+            if not _obs_invoke("obs_frontend_recording_stop"):
+                _report_obs_error(extended.get("command_id"), "OBS recording stop API is unavailable.")
+        elif isinstance(extended, dict) and extended.get("mode") == "starting":
+            extended["owned_recording"] = True
+            extended["mode"] = "waiting_overlap"
+            _post_bridge_command_result(
+                {"id": extended.get("command_id"), "status": "processing", "event": "recording_started"}
+            )
+            _schedule_extended_replay_save()
     if obs and event == getattr(obs, "OBS_FRONTEND_EVENT_RECORDING_STOPPED", object()):
+        extended = _state.get("extended_clip")
+        if isinstance(extended, dict):
+            _complete_extended_recording_event(get_last_recording_path())
         context = _state.pop("pending_recording", None)
         if context is not None:
             path = get_last_recording_path()
             _send_job_after_obs_event("recording", path, context)
     if obs and event == getattr(obs, "OBS_FRONTEND_EVENT_REPLAY_BUFFER_SAVED", object()):
+        if _complete_extended_replay_event(get_last_replay_path()):
+            return
         context = _state.pop("pending_replay", None)
         if context is not None:
             path = get_last_replay_path()
@@ -547,6 +735,7 @@ def _poll_bridge_commands():
         payload = _get_json(config, "/api/bridge/command")
     except Exception as error:
         _set_backend_status("Disconnected")
+        _cancel_owned_extended_recording("backend_disconnected")
         _log_poll_error("Could not poll bridge commands: %s" % error)
         return False
     _set_backend_status("Connected")
@@ -577,6 +766,12 @@ def _execute_bridge_command(command):
             ok = bool(save_replay_buffer_and_voice_rename(command_id))
         elif action == "save_recording":
             ok = bool(stop_recording_and_voice_rename(command_id))
+        elif action == "extended_clip_start":
+            ok = bool(start_extended_clip(command_id))
+        elif action == "extended_clip_finish":
+            ok = bool(finish_extended_clip(command_id))
+        elif action == "extended_clip_cancel":
+            ok = bool(cancel_extended_clip(command_id))
         else:
             error = "Unknown command action: %s" % action
     except Exception as command_error:

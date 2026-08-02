@@ -754,6 +754,163 @@ def test_bridge_stop_backend_uses_graceful_shutdown(monkeypatch) -> None:
     assert posted == ["/api/system/shutdown"]
 
 
+def test_extended_clip_bridge_runs_event_driven_start_and_finish(monkeypatch, tmp_path: Path) -> None:
+    bridge = load_bridge()
+    posted = []
+    timers = []
+
+    class FakeObs:
+        OBS_FRONTEND_EVENT_RECORDING_STARTED = 10
+        OBS_FRONTEND_EVENT_REPLAY_BUFFER_SAVED = 11
+        OBS_FRONTEND_EVENT_RECORDING_STOPPED = 12
+
+        def __init__(self) -> None:
+            self.recording = False
+            self.replay = True
+            self.replay_saves = 0
+
+        def obs_frontend_recording_active(self):
+            return self.recording
+
+        def obs_frontend_replay_buffer_active(self):
+            return self.replay
+
+        def obs_frontend_recording_start(self):
+            self.recording = True
+
+        def obs_frontend_recording_stop(self):
+            self.recording = False
+
+        def obs_frontend_replay_buffer_save(self):
+            self.replay_saves += 1
+
+        def obs_frontend_get_last_replay(self):
+            return str(tmp_path / "replay.mp4")
+
+        def obs_frontend_get_last_recording(self):
+            return str(tmp_path / "recording.mp4")
+
+        def timer_add(self, callback, delay):
+            timers.append((callback, delay))
+
+        def timer_remove(self, callback):
+            del callback
+
+    fake_obs = FakeObs()
+    monkeypatch.setattr(bridge, "obs", fake_obs)
+    monkeypatch.setattr(bridge, "collect_obs_context", lambda: {"source_title": "Game"})
+    monkeypatch.setattr(bridge, "_post_bridge_command_result", lambda payload: posted.append(payload) or {"ok": True})
+    monkeypatch.setattr(
+        bridge,
+        "load_bridge_config",
+        lambda: {"extended_clip": {"overlap_wait_seconds": 1.5}, "backend": {"host": "127.0.0.1", "port": 1}},
+    )
+
+    assert bridge.start_extended_clip("start-1") is True
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STARTED)
+    assert timers[0][1] == 1500
+    timers[0][0]()
+    assert fake_obs.replay_saves == 1
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_SAVED)
+
+    assert posted[-1]["status"] == "done"
+    assert posted[-1]["replay_path"].endswith("replay.mp4")
+    assert bridge._state["extended_clip"]["mode"] == "capturing"
+
+    assert bridge.finish_extended_clip("finish-1") is True
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED)
+
+    assert posted[-1]["id"] == "finish-1"
+    assert posted[-1]["recording_path"].endswith("recording.mp4")
+    assert bridge._state["extended_clip"] is None
+    assert fake_obs.replay is True
+
+
+def test_extended_clip_cancel_stops_only_owned_recording_and_keeps_replay(monkeypatch) -> None:
+    bridge = load_bridge()
+    posted = []
+
+    class FakeObs:
+        OBS_FRONTEND_EVENT_RECORDING_STOPPED = 12
+
+        def __init__(self) -> None:
+            self.recording = True
+            self.replay = True
+
+        def obs_frontend_recording_active(self):
+            return self.recording
+
+        def obs_frontend_recording_stop(self):
+            self.recording = False
+
+        def obs_frontend_replay_buffer_active(self):
+            return self.replay
+
+        def obs_frontend_get_last_recording(self):
+            return "recording.mp4"
+
+    fake_obs = FakeObs()
+    monkeypatch.setattr(bridge, "obs", fake_obs)
+    monkeypatch.setattr(bridge, "_post_bridge_command_result", lambda payload: posted.append(payload) or {"ok": True})
+    bridge._state["extended_clip"] = {
+        "mode": "capturing",
+        "command_id": None,
+        "owned_recording": True,
+        "context": {},
+    }
+
+    assert bridge.cancel_extended_clip("cancel-1") is True
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED)
+
+    assert fake_obs.recording is False
+    assert fake_obs.replay is True
+    assert posted[-1]["id"] == "cancel-1"
+    assert posted[-1]["status"] == "done"
+
+
+def test_extended_clip_cancel_waits_for_late_recording_started_event(monkeypatch) -> None:
+    bridge = load_bridge()
+    posted = []
+
+    class FakeObs:
+        OBS_FRONTEND_EVENT_RECORDING_STARTED = 10
+        OBS_FRONTEND_EVENT_RECORDING_STOPPED = 12
+
+        def __init__(self) -> None:
+            self.recording = False
+            self.stop_calls = 0
+
+        def obs_frontend_recording_active(self):
+            return self.recording
+
+        def obs_frontend_recording_stop(self):
+            self.stop_calls += 1
+            self.recording = False
+
+        def obs_frontend_get_last_recording(self):
+            return "late-recording.mp4"
+
+    fake_obs = FakeObs()
+    monkeypatch.setattr(bridge, "obs", fake_obs)
+    monkeypatch.setattr(bridge, "_post_bridge_command_result", lambda payload: posted.append(payload) or {"ok": True})
+    bridge._state["extended_clip"] = {
+        "mode": "starting",
+        "command_id": "start-1",
+        "owned_recording": False,
+        "context": {},
+    }
+
+    assert bridge.cancel_extended_clip("cancel-1") is True
+    assert bridge._state["extended_clip"]["mode"] == "cancel_pending_start"
+    fake_obs.recording = True
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STARTED)
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED)
+
+    assert fake_obs.stop_calls == 1
+    assert posted[-1]["id"] == "cancel-1"
+    assert posted[-1]["status"] == "done"
+
+
 def test_bridge_does_not_kill_non_easy_rename_service_on_port(monkeypatch) -> None:
     bridge = load_bridge()
     killed = []
