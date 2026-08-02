@@ -25,7 +25,7 @@
 1. Эта папка — целевая спецификация.
 2. Автотесты и код — источник истины для **CURRENT**.
 3. `SayClip_Replay_Sequence_Architecture.md` — исследовательская заметка. Она может содержать устаревшие названия и решения и **MUST NOT** использоваться как контракт без сверки с этой спецификацией.
-4. `replay_overlap_probe.py` и его diagnostics JSON — экспериментальное доказательство алгоритма media merge, а не production API.
+4. `replay_overlap_probe.py` — ручная CLI-обёртка над production-модулем `use_cases/extended_clip/overlap.py`; сам backend **MUST NOT** зависеть от наличия этого корневого файла.
 
 ## Термины
 
