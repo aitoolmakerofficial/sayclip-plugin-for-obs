@@ -27,11 +27,13 @@ def test_sanitizer_decodes_percent_encoded_title_chars() -> None:
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
-        ("DemoTormentedSouls2__", "demls2"),
+        ("DemoTormentedSouls2__", "demotouls2"),
         ("METAL_GEAR_SOLID_Δ**SNAKE_EATER**", "mgsδse"),
         ("Banishers__Ghosts_of_New_Eden__", "bgone"),
         ("Dying_Light__The_Beast_(inactive)", "dltbi"),
         ("Portal", "portal"),
+        ("HellIsUs", "hellisus"),
+        ("RedDeadRedemption", "reddeption"),
     ],
 )
 def test_short_source_token(source: str, expected: str) -> None:
@@ -131,8 +133,8 @@ def test_formatter_rejects_paths_outside_obs_folder(filename_format: str) -> Non
 
 def test_conflict_suffixing(tmp_path: Path) -> None:
     first = tmp_path / "clip.mkv"
-    second = tmp_path / "clip(2).mkv"
+    second = tmp_path / "clip (2).mkv"
     first.write_text("", encoding="utf-8")
     second.write_text("", encoding="utf-8")
 
-    assert next_available_path(first).name == "clip(3).mkv"
+    assert next_available_path(first).name == "clip (3).mkv"
