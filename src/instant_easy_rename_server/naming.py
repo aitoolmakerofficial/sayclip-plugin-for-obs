@@ -31,9 +31,9 @@ def short_source_token(value: str, fallback: str = "") -> str:
     parts = [part for part in source.split("-") if part]
     if len(parts) > 1:
         return "".join(part[0] for part in parts)
-    if len(source) <= 6:
+    if len(source) <= 10:
         return source
-    return f"{source[:3]}{source[-3:]}"
+    return f"{source[:5]}{source[-5:]}"
 
 
 def game_from_request(
@@ -144,7 +144,7 @@ def next_available_path(path: Path) -> Path:
 
     index = 2
     while True:
-        candidate = path.with_name(f"{path.stem}({index}){path.suffix}")
+        candidate = path.with_name(f"{path.stem} ({index}){path.suffix}")
         if not candidate.exists():
             return candidate
         index += 1
