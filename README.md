@@ -257,6 +257,10 @@ SayClip automatically falls back to the recording folder.
 ```text
 http://127.0.0.1:17891/dock
 ```
+
+The Dock includes a **DISCARD** action for an active ordinary OBS Recording. The first activation from the Dock or the registered `Discard Recording` OBS hotkey shows **CONFIRM** for two seconds; a second activation from either input stops the Recording and applies the configured Discard mode.
+
+In **Move** mode the finalized file keeps its original name and moves to `SayClip Discarded` inside the active OBS profile Recording output directory. Filename conflicts use ` (1)`, ` (2)`, and so on. In **Delete permanently** mode the file is deleted directly without the Recycle Bin. Configure the mode and folder name in **Settings → Discard**.
 # License
 
 SayClip is free and open-source software licensed under the GNU General Public

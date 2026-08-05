@@ -17,6 +17,9 @@
   --moment-soft: #fed7aa;
   --record: #ff4d5e;
   --record-bg: #291319;
+  --discard: #b77943;
+  --discard-bg: #2a1c12;
+  --confirm: #f59e0b;
   --ready: #4ade80;
   --speak: #22d3ee;
   --done: #34d399;
@@ -72,7 +75,7 @@ p { margin: 0; }
 
 .actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 .action-button, .primary-button {
@@ -124,6 +127,11 @@ p { margin: 0; }
 .action-button--extended::before { background: radial-gradient(circle at 20% 0%, var(--violet), transparent 60%); }
 .action-button--extended.is-active { background: linear-gradient(180deg, rgba(139,92,246,.22), rgba(139,92,246,.05)), var(--surface); border-color: rgba(196,181,253,.68); }
 .action-button--extended:hover:not(:disabled) { box-shadow: 0 0 0 1px rgba(139,92,246,.28), 0 14px 44px rgba(0,0,0,.38); }
+.action-button--discard { color: var(--discard); background: linear-gradient(180deg, rgba(183,121,67,.14), rgba(183,121,67,.025)), var(--discard-bg); }
+.action-button--discard::before { background: radial-gradient(circle at 20% 0%, var(--discard), transparent 60%); }
+.action-button--discard.is-confirming { color: var(--confirm); border-color: rgba(245,158,11,.78); background: linear-gradient(180deg, rgba(245,158,11,.24), rgba(245,158,11,.06)), var(--surface); }
+.action-button--discard:hover:not(:disabled) { box-shadow: 0 0 0 1px rgba(183,121,67,.3), 0 14px 44px rgba(0,0,0,.38); }
+.action-button--discard:disabled { color: #806b59; background: linear-gradient(180deg, rgba(128,107,89,.1), rgba(128,107,89,.02)), var(--surface); }
 .action-button:disabled, .primary-button:disabled { cursor: default; opacity: .46; transform: none; box-shadow: none; }
 .button-icon, .status-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .button-icon {
@@ -166,6 +174,16 @@ p { margin: 0; }
   background:
     radial-gradient(circle at 50% 20%, rgba(196,181,253,.46), rgba(139,92,246,.1) 58%, transparent 76%),
     linear-gradient(135deg, #151b24 0%, #28164a 58%, #070a0f 100%);
+}
+.action-button--discard .button-icon::before {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(205,150,99,.46), rgba(183,121,67,.1) 58%, transparent 76%),
+    linear-gradient(135deg, #151b24 0%, #3b2617 58%, #070a0f 100%);
+}
+.action-button--discard.is-confirming .button-icon::before {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(251,191,36,.52), rgba(245,158,11,.13) 58%, transparent 76%),
+    linear-gradient(135deg, #151b24 0%, #4a2a0a 58%, #070a0f 100%);
 }
 .button-icon svg {
   position: relative;

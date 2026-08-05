@@ -4,6 +4,7 @@ from instant_easy_rename_server.ui import (
     _empty_jobs_row,
     _folder_for_paths,
     _move_rename_part,
+    _normalized_discard_settings,
     _presentation_row,
     _rename_format_parts_from_template,
     _rename_format_template_from_parts,
@@ -126,3 +127,11 @@ def test_move_rename_part_inserts_selected_part_at_target_index() -> None:
     order = ["source", "job_type", "datetime", "title"]
 
     assert _move_rename_part(order, "title", 1) == ["source", "title", "job_type", "datetime"]
+
+
+def test_discard_settings_normalize_mode_and_folder_name() -> None:
+    assert _normalized_discard_settings("delete_permanently", "Discarded") == (
+        "delete_permanently",
+        "Discarded",
+    )
+    assert _normalized_discard_settings("unknown", "../unsafe") == ("move", "SayClip Discarded")

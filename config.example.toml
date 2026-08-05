@@ -43,6 +43,12 @@ extended_clip = "extended-clip"
 [jobs]
 max_jobs_in_ui = 50
 
+[discard]
+# Move a discarded recording into a folder inside the active OBS profile's
+# Recording output directory, or use "delete_permanently" to delete it directly.
+mode = "move"
+folder_name = "SayClip Discarded"
+
 [extended_clip]
 enabled = true
 # Recording runs for this long before SayClip saves its sequence Replay snapshot.

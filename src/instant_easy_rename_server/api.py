@@ -21,6 +21,13 @@ from .config import AppConfig
 from .jobs import JobCreateRequest, JobStore
 from .renamer import MediaRenamer, RenameError, build_media_renamer
 from .stt import SpeechToTextEngine, SpeechToTextError, build_stt_engine
+from .use_cases.discard_recording import (
+    DEFAULT_DISCARD_FOLDER_NAME,
+    DISCARD_MODE_DELETE_PERMANENTLY,
+    DISCARD_MODE_MOVE,
+    DiscardRecordingError,
+    DiscardRecordingService,
+)
 from .use_cases.extended_clip import (
     ExtendedClipMergeError,
     ExtendedClipMerger,
@@ -32,12 +39,16 @@ from .use_cases.extended_clip import (
 logger = logging.getLogger(__name__)
 BRIDGE_HEARTBEAT_SECONDS = 3.0
 OBS_STATE_HEARTBEAT_SECONDS = 3.0
-DONE_STATUS_SECONDS = 1.8
+DONE_STATUS_SECONDS = 2.0
+ERROR_STATUS_SECONDS = 8.0
+DISCARD_CONFIRMATION_SECONDS = 2.0
+DISCARD_PUBLIC_ERROR = "Recording was not discarded."
 
 
 class BridgeCommandAction(str, Enum):
     SAVE_MOMENT = "save_moment"
     SAVE_RECORDING = "save_recording"
+    DISCARD_RECORDING = "discard_recording"
     EXTENDED_CLIP_START = "extended_clip_start"
     EXTENDED_CLIP_FINISH = "extended_clip_finish"
     EXTENDED_CLIP_CANCEL = "extended_clip_cancel"
@@ -71,6 +82,8 @@ class BridgeCommand:
     updated_at: str | None = None
     result: dict[str, Any] | None = None
     job_id: str | None = None
+    policy: dict[str, Any] | None = None
+    backend_processing: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -90,6 +103,7 @@ class BackendApi:
         media_renamer: MediaRenamer | None = None,
         sound_player: ListeningSoundPlayer | None = None,
         extended_clip_service: ExtendedClipService | None = None,
+        discard_recording_service: DiscardRecordingService | None = None,
     ):
         self.config = config
         self.store = store or JobStore(config)
@@ -97,6 +111,7 @@ class BackendApi:
         self.stt_engine = stt_engine or build_stt_engine(config)
         self.media_renamer = media_renamer or build_media_renamer(config)
         self.sound_player = sound_player or build_listening_sound_player(config)
+        self.discard_recording_service = discard_recording_service or DiscardRecordingService()
         extended_config = config.extended_clip
         self.extended_clip = extended_clip_service or ExtendedClipService(
             ExtendedClipMerger(
@@ -122,6 +137,7 @@ class BackendApi:
         self.last_result: str | None = None
         self.last_result_expires_at: datetime | None = None
         self.last_error: str | None = None
+        self.discard_confirmation_expires_at: datetime | None = None
         self.shutdown_requested = threading.Event()
         self._lock = threading.RLock()
 
@@ -169,13 +185,14 @@ class BackendApi:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
+            self._expire_terminal_result_locked()
             if self.extended_clip.active_session is not None and (
                 not self._bridge_is_connected() or not self._obs_state_is_fresh()
             ):
                 self.extended_clip.fail("Extended Clip stopped because the OBS bridge state was lost.")
                 self.last_result = OperationPhase.ERROR.value
                 self.last_error = "Extended Clip stopped because the OBS bridge state was lost. Source files were kept."
-                self.last_result_expires_at = None
+                self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
             jobs = self.store.list()
             active_command = self._active_command()
             active_job = self._active_job(active_command)
@@ -230,6 +247,37 @@ class BackendApi:
     def save_recording(self) -> dict[str, Any]:
         return self._enqueue_save_action(BridgeCommandAction.SAVE_RECORDING)
 
+    def discard_recording(self) -> dict[str, Any]:
+        with self._lock:
+            active_command = self._active_command()
+            busy = active_command is not None or self._active_job(active_command) is not None
+            availability = self._discard_action_availability(busy=busy)
+            if not availability["enabled"]:
+                self.discard_confirmation_expires_at = None
+                return {"ok": True, "accepted": False, "reason": availability["reason"]}
+
+            now = datetime.now(timezone.utc).astimezone()
+            if not self._discard_confirmation_is_armed_locked(now):
+                self.discard_confirmation_expires_at = now + timedelta(seconds=DISCARD_CONFIRMATION_SECONDS)
+                return {
+                    "ok": True,
+                    "accepted": False,
+                    "confirmation_armed": True,
+                    "confirmation_expires_in_ms": int(DISCARD_CONFIRMATION_SECONDS * 1000),
+                }
+
+            self.discard_confirmation_expires_at = None
+            configured_mode = str(self.config.discard.get("mode") or DISCARD_MODE_MOVE).strip()
+            if configured_mode not in {DISCARD_MODE_MOVE, DISCARD_MODE_DELETE_PERMANENTLY}:
+                logger.warning("Unknown discard mode %r; using safe move mode", configured_mode)
+                configured_mode = DISCARD_MODE_MOVE
+            policy = {
+                "mode": configured_mode,
+                "folder_name": str(self.config.discard.get("folder_name") or DEFAULT_DISCARD_FOLDER_NAME).strip()
+                or DEFAULT_DISCARD_FOLDER_NAME,
+            }
+            return self._enqueue_bridge_command_locked(BridgeCommandAction.DISCARD_RECORDING, policy=policy)
+
     def start_extended_clip(self) -> dict[str, Any]:
         with self._lock:
             availability = self._extended_action_availability("extended_clip_start")
@@ -281,6 +329,10 @@ class BackendApi:
             command = self._find_bridge_command(command_id)
             if command is None:
                 return {"ok": False, "error": "Command not found"}
+            if command.status in {BridgeCommandStatus.DONE, BridgeCommandStatus.ERROR}:
+                return {"ok": True, "duplicate": True}
+            if command.action == BridgeCommandAction.DISCARD_RECORDING:
+                return self._record_discard_result_locked(command, status, payload)
             if command.action in {
                 BridgeCommandAction.EXTENDED_CLIP_START,
                 BridgeCommandAction.EXTENDED_CLIP_FINISH,
@@ -294,7 +346,7 @@ class BackendApi:
                 return {"ok": True}
             if status == BridgeCommandStatus.ERROR:
                 self.last_result = OperationPhase.ERROR.value
-                self.last_result_expires_at = None
+                self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
                 self.last_error = str(payload.get("error") or "OBS bridge command failed.")
                 self._finish_operation_locked(command)
                 return {"ok": True}
@@ -323,6 +375,8 @@ class BackendApi:
             self.bridge_last_seen_at = datetime.now(timezone.utc).astimezone()
             self.obs_state = state
             self.obs_state_seen_at = self.bridge_last_seen_at
+            if not state["recording_active"]:
+                self.discard_confirmation_expires_at = None
             session = self.extended_clip.active_session
             if (
                 session is not None
@@ -366,6 +420,7 @@ class BackendApi:
         action: BridgeCommandAction,
         *,
         replace_active: bool = False,
+        policy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         current = datetime.now(timezone.utc).astimezone()
         command = BridgeCommand(
@@ -373,6 +428,7 @@ class BackendApi:
             action=action,
             status=BridgeCommandStatus.PENDING,
             created_at=current.isoformat(),
+            policy=dict(policy) if policy else None,
         )
         self.bridge_commands.insert(0, command)
         self.bridge_commands = self.bridge_commands[:25]
@@ -381,6 +437,7 @@ class BackendApi:
         self.last_result = None
         self.last_result_expires_at = None
         self.last_error = None
+        self.discard_confirmation_expires_at = None
         return {"ok": True, "accepted": True, "command_id": command.id}
 
     def request_shutdown(self) -> dict[str, Any]:
@@ -515,7 +572,7 @@ class BackendApi:
             self.extended_clip.fail(error)
             self.last_result = OperationPhase.ERROR.value
             self.last_error = error
-            self.last_result_expires_at = None
+            self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
             self._finish_operation_locked(command)
             return {"ok": True}
         if command.action == BridgeCommandAction.EXTENDED_CLIP_START:
@@ -548,6 +605,91 @@ class BackendApi:
         )
         thread.start()
         return {"ok": True, "status": "processing"}
+
+    def _record_discard_result_locked(
+        self,
+        command: BridgeCommand,
+        status: BridgeCommandStatus,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+        if status == BridgeCommandStatus.PROCESSING:
+            if not command.backend_processing:
+                command.status = BridgeCommandStatus.PROCESSING
+                command.result = dict(payload)
+            return {"ok": True}
+        if command.backend_processing:
+            return {"ok": True, "duplicate": True}
+        if status == BridgeCommandStatus.ERROR:
+            technical_error = str(payload.get("error") or "OBS bridge discard command failed.")
+            logger.error("Discard bridge command failed: command_id=%s error=%s", command.id, technical_error)
+            command.status = BridgeCommandStatus.ERROR
+            command.result = dict(payload)
+            self.last_result = OperationPhase.ERROR.value
+            self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
+            self.last_error = DISCARD_PUBLIC_ERROR
+            self._finish_operation_locked(command)
+            return {"ok": True}
+        command.status = BridgeCommandStatus.PROCESSING
+        command.result = dict(payload)
+        command.backend_processing = True
+        self.obs_state["recording_active"] = False
+        thread = threading.Thread(
+            target=self._process_discard_recording,
+            args=(command.id, dict(payload)),
+            daemon=True,
+        )
+        thread.start()
+        return {"ok": True, "status": "processing"}
+
+    def _process_discard_recording(self, command_id: str, payload: dict[str, Any]) -> None:
+        try:
+            with self._lock:
+                command = self._find_bridge_command(command_id)
+                if command is None:
+                    return
+                policy = dict(command.policy or {})
+            result = self.discard_recording_service.discard(
+                str(payload.get("recording_path") or ""),
+                str(payload.get("recording_output_root") or ""),
+                mode=str(policy.get("mode") or DISCARD_MODE_MOVE),
+                folder_name=str(policy.get("folder_name") or DEFAULT_DISCARD_FOLDER_NAME),
+            )
+            logger.info(
+                "Discard completed: command_id=%s mode=%s source=%s destination=%s",
+                command_id,
+                result.mode,
+                result.source_path,
+                result.destination_path,
+            )
+            with self._lock:
+                command = self._find_bridge_command(command_id)
+                if command is None:
+                    return
+                command.status = BridgeCommandStatus.DONE
+                command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+                command.result = {
+                    **payload,
+                    "discard_mode": result.mode,
+                    "discard_destination": str(result.destination_path) if result.destination_path else None,
+                }
+                self.last_result = OperationPhase.DONE.value
+                self.last_result_expires_at = self._terminal_expiry(DONE_STATUS_SECONDS)
+                self.last_error = None
+                self._finish_operation_locked(command)
+        except (DiscardRecordingError, OSError) as error:
+            logger.exception("Discard processing failed: command_id=%s", command_id)
+            with self._lock:
+                command = self._find_bridge_command(command_id)
+                if command is None:
+                    return
+                command.status = BridgeCommandStatus.ERROR
+                command.updated_at = datetime.now(timezone.utc).astimezone().isoformat()
+                command.result = {**payload, "error": str(error)}
+                self.last_result = OperationPhase.ERROR.value
+                self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
+                self.last_error = DISCARD_PUBLIC_ERROR
+                self._finish_operation_locked(command)
 
     def _process_extended_clip(self, command_id: str, recording_path: str, metadata: dict[str, Any]) -> None:
         try:
@@ -591,7 +733,7 @@ class BackendApi:
                 self.extended_clip.fail(str(error))
                 self.last_result = OperationPhase.ERROR.value
                 self.last_error = str(error)
-                self.last_result_expires_at = None
+                self.last_result_expires_at = self._terminal_expiry(ERROR_STATUS_SECONDS)
                 command = self._find_bridge_command(command_id)
                 if command:
                     command.status = BridgeCommandStatus.ERROR
@@ -690,9 +832,21 @@ class BackendApi:
         return None
 
     def _action_availability_payload(self, *, busy: bool) -> dict[str, dict[str, Any]]:
+        discard = self._discard_action_availability(busy=busy)
+        confirmation_armed = discard["enabled"] and self._discard_confirmation_is_armed_locked()
+        if not discard["enabled"]:
+            self.discard_confirmation_expires_at = None
+        discard = {
+            **discard,
+            "confirmation_armed": confirmation_armed,
+            "confirmation_expires_in_ms": self._discard_confirmation_remaining_ms_locked()
+            if confirmation_armed
+            else 0,
+        }
         return {
             "save_moment": self._save_action_availability(BridgeCommandAction.SAVE_MOMENT, busy=busy),
             "save_recording": self._save_action_availability(BridgeCommandAction.SAVE_RECORDING, busy=busy),
+            "discard_recording": discard,
             "extended_clip_start": self._extended_action_availability("extended_clip_start"),
             "extended_clip_finish": self._extended_action_availability("extended_clip_finish"),
             "extended_clip_cancel": self._extended_action_availability("extended_clip_cancel"),
@@ -714,6 +868,19 @@ class BackendApi:
         if action == BridgeCommandAction.SAVE_MOMENT and not self.obs_state.get("replay_buffer_active"):
             return {"enabled": False, "reason": "replay_buffer_inactive"}
         if action == BridgeCommandAction.SAVE_RECORDING and not self.obs_state.get("recording_active"):
+            return {"enabled": False, "reason": "recording_inactive"}
+        return {"enabled": True, "reason": None}
+
+    def _discard_action_availability(self, *, busy: bool) -> dict[str, Any]:
+        if not self._bridge_is_connected():
+            return {"enabled": False, "reason": "bridge_disconnected"}
+        if not self._obs_state_is_fresh():
+            return {"enabled": False, "reason": "obs_state_stale"}
+        if self.extended_clip.active_session is not None:
+            return {"enabled": False, "reason": "extended_clip_active"}
+        if busy:
+            return {"enabled": False, "reason": "busy"}
+        if not self.obs_state.get("recording_active"):
             return {"enabled": False, "reason": "recording_inactive"}
         return {"enabled": True, "reason": None}
 
@@ -810,7 +977,7 @@ class BackendApi:
         if command is None:
             if self.last_result == OperationPhase.DONE.value and self._last_result_is_visible():
                 return OperationPhase.DONE
-            if self.last_result == OperationPhase.ERROR.value:
+            if self.last_result == OperationPhase.ERROR.value and self._last_result_is_visible():
                 return OperationPhase.ERROR
             return OperationPhase.IDLE
         if command.job_id:
@@ -882,17 +1049,39 @@ class BackendApi:
             self.active_job_id = None
         self.last_result = result
         self.last_error = error
-        if result == OperationPhase.DONE.value:
-            self.last_result_expires_at = datetime.now(timezone.utc).astimezone() + timedelta(seconds=DONE_STATUS_SECONDS)
-        else:
-            self.last_result_expires_at = None
+        duration = DONE_STATUS_SECONDS if result == OperationPhase.DONE.value else ERROR_STATUS_SECONDS
+        self.last_result_expires_at = self._terminal_expiry(duration)
 
     def _last_result_is_visible(self) -> bool:
-        if self.last_result != OperationPhase.DONE.value:
-            return self.last_result is not None
         if self.last_result_expires_at is None:
             return False
         return datetime.now(timezone.utc).astimezone() <= self.last_result_expires_at
+
+    def _expire_terminal_result_locked(self) -> None:
+        if self.last_result is None or self._last_result_is_visible():
+            return
+        self.last_result = None
+        self.last_result_expires_at = None
+        self.last_error = None
+
+    def _terminal_expiry(self, seconds: float) -> datetime:
+        return datetime.now(timezone.utc).astimezone() + timedelta(seconds=seconds)
+
+    def _discard_confirmation_is_armed_locked(self, now: datetime | None = None) -> bool:
+        if self.discard_confirmation_expires_at is None:
+            return False
+        current = now or datetime.now(timezone.utc).astimezone()
+        if current >= self.discard_confirmation_expires_at:
+            self.discard_confirmation_expires_at = None
+            return False
+        return True
+
+    def _discard_confirmation_remaining_ms_locked(self) -> int:
+        if not self._discard_confirmation_is_armed_locked():
+            return 0
+        assert self.discard_confirmation_expires_at is not None
+        remaining = self.discard_confirmation_expires_at - datetime.now(timezone.utc).astimezone()
+        return max(0, int(remaining.total_seconds() * 1000))
 
     def _finish_operation_locked(self, command: BridgeCommand) -> None:
         if self.active_command_id == command.id:

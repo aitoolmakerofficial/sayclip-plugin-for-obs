@@ -13,6 +13,7 @@ def test_load_default_config_when_file_missing(tmp_path: Path) -> None:
     assert config.extended_clip["output_container"] == "mkv"
     assert config.extended_clip["match_window_seconds"] == 3.0
     assert config.extended_clip["delete_sources_after_success"] is False
+    assert config.discard == {"mode": "move", "folder_name": "SayClip Discarded"}
 
 
 def test_load_config_migrates_legacy_app_name(tmp_path: Path) -> None:
@@ -67,3 +68,26 @@ def test_save_config_round_trips_audio_and_stt_settings(tmp_path: Path) -> None:
     assert reloaded.stt["model_path"] == "./models/faster-whisper-tiny"
     assert reloaded.stt["language"] == "en"
     assert reloaded.audio["device"] == "default"
+
+
+def test_save_config_round_trips_discard_settings(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+    config.data["discard"]["mode"] = "delete_permanently"
+    config.data["discard"]["folder_name"] = "Discarded Recordings"
+
+    save_config(config)
+    reloaded = load_config(tmp_path)
+
+    assert reloaded.discard["mode"] == "delete_permanently"
+    assert reloaded.discard["folder_name"] == "Discarded Recordings"
+
+
+def test_invalid_discard_config_falls_back_to_safe_move_defaults(tmp_path: Path) -> None:
+    (tmp_path / "config.toml").write_text(
+        '[discard]\nmode = "unknown"\nfolder_name = "../unsafe"\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.discard == {"mode": "move", "folder_name": "SayClip Discarded"}

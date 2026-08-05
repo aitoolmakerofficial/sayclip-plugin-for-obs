@@ -45,7 +45,7 @@ def test_rename_conflict_gets_numeric_suffix(tmp_path: Path) -> None:
     api.create_job({"type": "recording", "original_path": str(original)})
     job = api.list_jobs()["jobs"][0]
 
-    assert Path(job["final_path"]).name == "game__2026-05-27_21-31-12__test-voice-title(2).mkv"
+    assert Path(job["final_path"]).name == "game__2026-05-27_21-31-12__test-voice-title (2).mkv"
     assert Path(job["final_path"]).exists()
     assert existing.exists()
 

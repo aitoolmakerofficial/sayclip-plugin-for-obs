@@ -53,6 +53,7 @@ _state = {
     "backend_status": "Disconnected",
     "title_source_name": "",
     "pending_recording": None,
+    "pending_discard": None,
     "pending_replay": None,
     "extended_clip": None,
     "extended_timer_registered": False,
@@ -343,6 +344,28 @@ def save_replay_buffer_and_voice_rename(command_id=None):
     return True
 
 
+def discard_recording(command_id):
+    if _state.get("extended_clip") is not None:
+        _report_obs_error(command_id, "Extended Clip is active.")
+        return False
+    if not _obs_call_bool("obs_frontend_recording_active"):
+        _report_obs_error(command_id, "Recording is not active.")
+        return False
+    output_root = get_recording_output_root()
+    if not output_root:
+        _report_obs_error(command_id, "OBS did not provide its recording output directory.")
+        return False
+    _state["pending_discard"] = {
+        "command_id": command_id,
+        "recording_output_root": str(output_root),
+    }
+    if not _obs_invoke("obs_frontend_recording_stop"):
+        _state["pending_discard"] = None
+        _report_obs_error(command_id, "OBS recording stop API is unavailable.")
+        return False
+    return True
+
+
 def start_extended_clip(command_id):
     if _state.get("extended_clip") is not None:
         _report_obs_error(command_id, "An Extended Clip is already active.")
@@ -519,6 +542,23 @@ def _on_frontend_event(event):
         extended = _state.get("extended_clip")
         if isinstance(extended, dict):
             _complete_extended_recording_event(get_last_recording_path())
+            return
+        discard_context = _state.pop("pending_discard", None)
+        if isinstance(discard_context, dict):
+            path = get_exact_last_recording_path()
+            command_id = discard_context.get("command_id")
+            if not path:
+                _report_obs_error(command_id, "OBS did not provide the discarded recording path.")
+                return
+            _post_bridge_command_result(
+                {
+                    "id": command_id,
+                    "status": "done",
+                    "recording_path": str(path),
+                    "recording_output_root": discard_context.get("recording_output_root"),
+                }
+            )
+            return
         context = _state.pop("pending_recording", None)
         if context is not None:
             path = get_last_recording_path()
@@ -660,6 +700,22 @@ def get_last_recording_path():
     )
 
 
+def get_exact_last_recording_path():
+    return _first_obs_string("obs_frontend_get_last_recording")
+
+
+def get_recording_output_root():
+    profile_config = _obs_call("obs_frontend_get_profile_config")
+    if not profile_config:
+        return None
+    output_mode = (_obs_config_string(profile_config, "Output", "Mode") or "Simple").strip().lower()
+    if output_mode == "advanced":
+        recording_type = (_obs_config_string(profile_config, "AdvOut", "RecType") or "Standard").strip().lower()
+        key = "FFFilePath" if recording_type == "ffmpeg" else "RecFilePath"
+        return _obs_config_string(profile_config, "AdvOut", key)
+    return _obs_config_string(profile_config, "SimpleOutput", "FilePath")
+
+
 def get_last_replay_path():
     return _first_obs_string(
         "obs_frontend_get_last_replay",
@@ -710,6 +766,10 @@ def _register_hotkeys(settings):
         "save_replay_voice_rename": (
             "SayClip Bridge: Save replay buffer and voice rename",
             save_replay_buffer_and_voice_rename,
+        ),
+        "discard_recording": (
+            "SayClip Bridge: Discard Recording",
+            request_discard_recording,
         ),
     }
     if not obs:
@@ -766,6 +826,8 @@ def _execute_bridge_command(command):
             ok = bool(save_replay_buffer_and_voice_rename(command_id))
         elif action == "save_recording":
             ok = bool(stop_recording_and_voice_rename(command_id))
+        elif action == "discard_recording":
+            ok = bool(discard_recording(command_id))
         elif action == "extended_clip_start":
             ok = bool(start_extended_clip(command_id))
         elif action == "extended_clip_finish":
@@ -804,6 +866,16 @@ def _post_bridge_state():
     except Exception as error:
         _log_poll_error("Could not post bridge state: %s" % error)
         return None
+
+
+def request_discard_recording():
+    return _run_background("discard_recording_action", _request_discard_recording)
+
+
+def _request_discard_recording():
+    response = _post_empty(load_bridge_config(), "/api/discard/recording")
+    _log("Discard action response: %s" % response)
+    return response
 
 
 def _terminate_known_backend_process(process):
@@ -918,6 +990,12 @@ def _post_json(config, path, payload):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _post_empty(config, path):
+    request = Request(_url(config, path), data=b"", method="POST")
+    with urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def _url(config, path):
     backend = config["backend"]
     return "http://%s:%s%s" % (backend["host"], backend["port"], path)
@@ -957,6 +1035,17 @@ def _obs_invoke(name, *args):
 
 def _obs_call_bool(name):
     return bool(_obs_call(name))
+
+
+def _obs_config_string(config, section, key):
+    if not obs or not config or not hasattr(obs, "config_get_string"):
+        return None
+    try:
+        value = obs.config_get_string(config, section, key)
+    except Exception as error:
+        _log("OBS profile config read failed: %s/%s: %s" % (section, key, error), visible=True)
+        return None
+    return str(value) if value else None
 
 
 def _first_obs_string(*names):

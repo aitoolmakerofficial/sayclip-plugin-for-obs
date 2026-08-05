@@ -1,6 +1,7 @@
 const ICONS = {
   "save-moment": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.1l2.55 5.16 5.7.83-4.13 4.02.98 5.68L12 16.1l-5.1 2.69.98-5.68-4.13-4.02 5.7-.83L12 3.1Z" fill="currentColor" opacity=".35"/><path d="M12 3.1l2.55 5.16 5.7.83-4.13 4.02.98 5.68L12 16.1l-5.1 2.69.98-5.68-4.13-4.02 5.7-.83L12 3.1Z"/></svg>`,
   "save-recording": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.8" y="5" width="16.4" height="14" rx="2.1"/><path d="M7.2 8h9.6"/><circle cx="8.8" cy="12.3" r="2.25"/><circle cx="15.2" cy="12.3" r="2.25"/><path d="M8.1 18.8h7.8l1.5-3.5H6.6l1.5 3.5Z"/><path d="M8.8 12.3h6.4"/></svg>`,
+  discard: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15"/><path d="M9 4h6l1 3H8l1-3Z"/><path d="M6.5 7l.8 13h9.4l.8-13"/><path d="M10 10.5v6M14 10.5v6"/></svg>`,
   ready: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.2 12.25l2.35 2.35 5.25-5.55"/></svg>`,
   speak: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.7" y="3.2" width="6.6" height="10.6" rx="3.3"/><path d="M5.4 10.6v.8a6.6 6.6 0 0 0 13.2 0v-.8M12 18v3M8.5 21h7"/><path d="M2.9 10.2v3.6M21.1 10.2v3.6"/></svg>`,
   done: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.8 16.7 4 10.9"/><path d="M18.6 13.1A7 7 0 1 1 16.9 7" opacity=".72"/></svg>`,
@@ -27,6 +28,8 @@ const elements = {
   saveMoment: document.querySelector("#saveMoment"),
   saveRecording: document.querySelector("#saveRecording"),
   extendedClip: document.querySelector("#extendedClip"),
+  discardRecording: document.querySelector("#discardRecording"),
+  discardRecordingLabel: document.querySelector("#discardRecordingLabel"),
   extendedClipLabel: document.querySelector("#extendedClipLabel"),
   extendedClipSubtitle: document.querySelector("#extendedClipSubtitle"),
   statusPanel: document.querySelector("#statusPanel"),
@@ -128,25 +131,36 @@ function updateActionAvailability(visual) {
   const extended = latestStatus && latestStatus.extended_clip || { active: false, stage: "idle" };
   const extendedActionName = extended.active ? "extended_clip_finish" : "extended_clip_start";
   const extendedAction = actionAvailability(extendedActionName);
+  const discard = actionAvailability("discard_recording");
   elements.saveMoment.disabled = baseDisabled || !moment.enabled;
   elements.saveRecording.disabled = baseDisabled || !recording.enabled;
   elements.extendedClip.disabled = baseDisabled || !extendedAction.enabled;
+  elements.discardRecording.disabled = baseDisabled || !discard.enabled;
   elements.saveMoment.title = moment.reason ? actionReasonText(moment.reason) : "";
   elements.saveRecording.title = recording.reason ? actionReasonText(recording.reason) : "";
   elements.extendedClip.title = extendedAction.reason ? actionReasonText(extendedAction.reason) : "";
+  elements.discardRecording.title = discard.reason ? actionReasonText(discard.reason) : "";
   elements.saveRecording.classList.toggle("is-active", Boolean(latestStatus && latestStatus.obs && latestStatus.obs.recording_active));
   elements.extendedClip.classList.toggle("is-active", Boolean(extended.active));
   elements.extendedClipLabel.textContent = extended.stage === "processing" ? "PROCESSING" : extended.active ? "FINISH EXTENDED" : "EXTENDED CLIP";
   elements.extendedClipSubtitle.textContent = extended.stage === "processing" ? "Processing" : extended.active ? "Finish" : "Start";
+  const discardConfirming = Boolean(discard.confirmation_armed);
+  elements.discardRecording.classList.toggle("is-confirming", discardConfirming);
+  elements.discardRecordingLabel.textContent = discardConfirming ? "CONFIRM" : "DISCARD";
 }
 
 function actionAvailability(name) {
   const actions = latestStatus && latestStatus.actions;
   const action = actions && actions[name];
   if (!action || typeof action.enabled !== "boolean") {
-    return { enabled: true, reason: null };
+    return { enabled: false, reason: "unknown_action" };
   }
-  return { enabled: action.enabled, reason: action.reason || null };
+  return {
+    enabled: action.enabled,
+    reason: action.reason || null,
+    confirmation_armed: Boolean(action.confirmation_armed),
+    confirmation_expires_in_ms: Number(action.confirmation_expires_in_ms || 0)
+  };
 }
 
 function actionReasonText(reason) {
@@ -309,6 +323,7 @@ async function sendAction(path, button) {
   if (path.includes("/save/recording")) actionName = "save_recording";
   if (path.includes("/extended-clip/start")) actionName = "extended_clip_start";
   if (path.includes("/extended-clip/finish")) actionName = "extended_clip_finish";
+  if (path.includes("/discard/recording")) actionName = "discard_recording";
   const availability = actionAvailability(actionName);
   if (!availability.enabled) {
     showMessage(actionReasonText(availability.reason), "error");
@@ -322,6 +337,15 @@ async function sendAction(path, button) {
     if (!response.ok || payload.ok === false) {
     showMessage(payload.error || "Command failed", "error");
       return;
+    }
+    if (actionName === "discard_recording" && payload.confirmation_armed && latestStatus && latestStatus.actions) {
+      latestStatus.actions.discard_recording = {
+        enabled: true,
+        reason: null,
+        confirmation_armed: true,
+        confirmation_expires_in_ms: Number(payload.confirmation_expires_in_ms || 2000)
+      };
+      updateActionAvailability("ready");
     }
   } catch (error) {
     showMessage("Command failed", "error");
@@ -357,6 +381,10 @@ elements.extendedClip.addEventListener("click", () => {
   const extended = latestStatus && latestStatus.extended_clip || { active: false };
   const path = extended.active ? "/api/extended-clip/finish" : "/api/extended-clip/start";
   sendAction(path, elements.extendedClip);
+});
+
+elements.discardRecording.addEventListener("click", () => {
+  sendAction("/api/discard/recording", elements.discardRecording);
 });
 
 elements.openFolder.addEventListener("click", async () => {

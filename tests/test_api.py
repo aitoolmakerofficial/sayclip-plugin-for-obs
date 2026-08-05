@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timedelta
 from threading import Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -415,11 +416,115 @@ def test_valid_save_action_can_follow_action_specific_bridge_error(tmp_path: Pat
 def test_contract_enums_keep_expected_values() -> None:
     assert BridgeCommandAction.SAVE_MOMENT.value == "save_moment"
     assert BridgeCommandAction.SAVE_RECORDING.value == "save_recording"
+    assert BridgeCommandAction.DISCARD_RECORDING.value == "discard_recording"
     assert BridgeCommandAction.EXTENDED_CLIP_START.value == "extended_clip_start"
     assert BridgeCommandAction.EXTENDED_CLIP_FINISH.value == "extended_clip_finish"
     assert BridgeCommandAction.EXTENDED_CLIP_CANCEL.value == "extended_clip_cancel"
     assert BridgeCommandStatus.PROCESSING.value == "processing"
     assert OperationPhase.LISTENING.value == "listening"
+
+
+def test_discard_confirmation_is_shared_and_second_call_enqueues_command(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    api.record_bridge_state(
+        {"recording_active": True, "recording_paused": False, "replay_buffer_active": False}
+    )
+
+    first = api.discard_recording()
+    armed = api.status()["actions"]["discard_recording"]
+    second = api.discard_recording()
+    command = api.poll_bridge_command()["command"]
+
+    assert first["accepted"] is False
+    assert first["confirmation_armed"] is True
+    assert armed["confirmation_armed"] is True
+    assert 0 < armed["confirmation_expires_in_ms"] <= 2000
+    assert second["accepted"] is True
+    assert command["action"] == "discard_recording"
+
+
+def test_discard_rejects_inactive_recording_without_arming(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    api.record_bridge_state(
+        {"recording_active": False, "recording_paused": False, "replay_buffer_active": True}
+    )
+
+    result = api.discard_recording()
+    action = api.status()["actions"]["discard_recording"]
+
+    assert result == {"ok": True, "accepted": False, "reason": "recording_inactive"}
+    assert action["confirmation_armed"] is False
+
+
+def test_discard_confirmation_expires_without_enqueuing_command(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    api.record_bridge_state(
+        {"recording_active": True, "recording_paused": False, "replay_buffer_active": False}
+    )
+    api.discard_recording()
+    api.discard_confirmation_expires_at = api.discard_confirmation_expires_at - timedelta(seconds=3)
+
+    state = api.status()
+    next_press = api.discard_recording()
+
+    assert state["actions"]["discard_recording"]["confirmation_armed"] is False
+    assert api.poll_bridge_command() == {"command": None}
+    assert next_press["confirmation_armed"] is True
+
+
+def test_discard_done_moves_file_without_creating_voice_job(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    source = tmp_path / "nested" / "recording.mkv"
+    source.parent.mkdir()
+    source.write_bytes(b"video")
+    api.record_bridge_state(
+        {"recording_active": True, "recording_paused": True, "replay_buffer_active": True}
+    )
+    api.discard_recording()
+    accepted = api.discard_recording()
+    api.poll_bridge_command()
+    result = api.record_bridge_command_result(
+        {
+            "id": accepted["command_id"],
+            "status": "done",
+            "recording_path": str(source),
+            "recording_output_root": str(tmp_path),
+        }
+    )
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and api.status()["busy"]:
+        time.sleep(0.01)
+
+    assert result == {"ok": True, "status": "processing"}
+    assert api.status()["ui_state"] == "done"
+    assert api.list_jobs()["jobs"] == []
+    assert (tmp_path / "SayClip Discarded" / "recording.mkv").read_bytes() == b"video"
+
+
+def test_discard_invalid_bridge_path_finishes_with_safe_error(tmp_path: Path) -> None:
+    api = BackendApi(load_config(tmp_path))
+    api.record_bridge_state(
+        {"recording_active": True, "recording_paused": False, "replay_buffer_active": False}
+    )
+    api.discard_recording()
+    accepted = api.discard_recording()
+    api.poll_bridge_command()
+    api.record_bridge_command_result(
+        {
+            "id": accepted["command_id"],
+            "status": "done",
+            "recording_path": str(tmp_path / "missing.mkv"),
+            "recording_output_root": str(tmp_path),
+        }
+    )
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and api.status()["busy"]:
+        time.sleep(0.01)
+
+    state = api.status()
+    assert state["ui_state"] == "error"
+    assert state["last_error"] == "Recording was not discarded."
+    assert api.list_jobs()["jobs"] == []
 
 
 def test_http_dock_returns_html(tmp_path: Path) -> None:
@@ -503,6 +608,39 @@ def test_http_save_action_and_bridge_command_result(tmp_path: Path) -> None:
     assert created["ok"] is True
     assert polled["command"]["action"] == "save_moment"
     assert result["ok"] is True
+
+
+def test_http_discard_endpoint_arms_then_accepts_and_rejects_fields(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+    config.data["backend"]["port"] = 0
+    api = BackendApi(config)
+    api.record_bridge_state(
+        {"recording_active": True, "recording_paused": False, "replay_buffer_active": False}
+    )
+    server = create_server(api)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    url = f"http://{host}:{port}/api/discard/recording"
+
+    try:
+        first = _post_json(url, {})
+        second = _post_json(url, {})
+        try:
+            _post_json(url, {"recording_path": "consumer-path.mkv"})
+        except HTTPError as error:
+            rejected = json.loads(error.read().decode("utf-8"))
+            rejected_status = error.code
+        else:
+            raise AssertionError("discard fields should be rejected")
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+
+    assert first["confirmation_armed"] is True
+    assert second["accepted"] is True
+    assert rejected_status == 422
+    assert rejected == {"error": "Discard recording request body must be empty"}
 
 
 def test_http_system_shutdown_sets_shutdown_flag_without_persisting_jobs(tmp_path: Path) -> None:

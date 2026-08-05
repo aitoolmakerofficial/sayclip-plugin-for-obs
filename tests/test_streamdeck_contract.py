@@ -1,5 +1,6 @@
 from instant_easy_rename_server.streamdeck import (
     BACKEND_BASE_URL,
+    DISCARD_RECORDING_PATH,
     EXTENDED_CLIP_CANCEL_PATH,
     EXTENDED_CLIP_FINISH_PATH,
     EXTENDED_CLIP_START_PATH,
@@ -17,6 +18,7 @@ def test_streamdeck_contract_uses_shared_backend_endpoints() -> None:
     assert STATUS_PATH == "/api/status"
     assert SAVE_MOMENT_PATH == "/api/save/moment"
     assert SAVE_RECORDING_PATH == "/api/save/recording"
+    assert DISCARD_RECORDING_PATH == "/api/discard/recording"
     assert EXTENDED_CLIP_START_PATH == "/api/extended-clip/start"
     assert EXTENDED_CLIP_FINISH_PATH == "/api/extended-clip/finish"
     assert EXTENDED_CLIP_CANCEL_PATH == "/api/extended-clip/cancel"

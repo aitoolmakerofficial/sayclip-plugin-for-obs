@@ -9,6 +9,13 @@ from typing import Any
 import tomllib
 
 from . import APP_VERSION
+from .use_cases.discard_recording import (
+    DEFAULT_DISCARD_FOLDER_NAME,
+    DISCARD_MODE_DELETE_PERMANENTLY,
+    DISCARD_MODE_MOVE,
+    DiscardRecordingError,
+    validate_discard_folder_name,
+)
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -42,6 +49,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "jobs": {
         "max_jobs_in_ui": 50,
+    },
+    "discard": {
+        "mode": "move",
+        "folder_name": "SayClip Discarded",
     },
     "extended_clip": {
         "enabled": True,
@@ -126,6 +137,10 @@ class AppConfig:
     def extended_clip(self) -> dict[str, Any]:
         return self.data["extended_clip"]
 
+    @property
+    def discard(self) -> dict[str, Any]:
+        return self.data["discard"]
+
     def resolve_path(self, value: str) -> Path:
         path = Path(value)
         if path.is_absolute():
@@ -141,6 +156,7 @@ def load_config(root: Path | str | None = None, filename: str = "config.toml") -
         with path.open("rb") as handle:
             data = _deep_merge(data, tomllib.load(handle))
     _migrate_legacy_branding(data)
+    _normalize_discard_config(data)
     data["app"]["version"] = APP_VERSION
     _drop_legacy_job_persistence(data)
     return AppConfig(root=project_root, data=data)
@@ -181,6 +197,19 @@ def _migrate_legacy_branding(data: dict[str, Any]) -> None:
     app = data.get("app")
     if isinstance(app, dict) and app.get("name") == "Instant Easy Rename":
         app["name"] = "SayClip"
+
+
+def _normalize_discard_config(data: dict[str, Any]) -> None:
+    discard = data.setdefault("discard", {})
+    mode = str(discard.get("mode") or DISCARD_MODE_MOVE).strip()
+    if mode not in {DISCARD_MODE_MOVE, DISCARD_MODE_DELETE_PERMANENTLY}:
+        mode = DISCARD_MODE_MOVE
+    try:
+        folder_name = validate_discard_folder_name(str(discard.get("folder_name") or ""))
+    except DiscardRecordingError:
+        folder_name = DEFAULT_DISCARD_FOLDER_NAME
+    discard["mode"] = mode
+    discard["folder_name"] = folder_name
 
 
 def _to_toml(data: dict[str, Any]) -> str:

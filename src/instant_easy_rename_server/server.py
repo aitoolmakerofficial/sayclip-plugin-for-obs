@@ -80,6 +80,12 @@ def make_handler(api: BackendApi) -> type[BaseHTTPRequestHandler]:
                     result = api.save_recording()
                     self._send_json(_save_status_code(result), result)
                     return
+                if path == "/api/discard/recording":
+                    if payload:
+                        raise ValueError("Discard recording request body must be empty")
+                    result = api.discard_recording()
+                    self._send_json(_save_status_code(result), result)
+                    return
                 if path == "/api/extended-clip/start":
                     result = api.start_extended_clip()
                     self._send_json(_save_status_code(result), result)

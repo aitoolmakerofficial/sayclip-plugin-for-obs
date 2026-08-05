@@ -17,6 +17,13 @@ import threading
 from .api import BackendApi
 from .audio import list_input_devices
 from .config import save_config
+from .use_cases.discard_recording import (
+    DEFAULT_DISCARD_FOLDER_NAME,
+    DISCARD_MODE_DELETE_PERMANENTLY,
+    DISCARD_MODE_MOVE,
+    DiscardRecordingError,
+    validate_discard_folder_name,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -73,8 +80,10 @@ def run_ui(api: BackendApi, server: Any) -> int:
             QProgressBar,
             QPushButton,
             QSizePolicy,
+            QStackedWidget,
             QTableWidget,
             QTableWidgetItem,
+            QTabWidget,
             QVBoxLayout,
             QWidget,
         )
@@ -659,6 +668,11 @@ def run_ui(api: BackendApi, server: Any) -> int:
             self.setMinimumWidth(620)
 
             layout = QVBoxLayout(self)
+            self.settings_tabs = QTabWidget()
+            layout.addWidget(self.settings_tabs)
+
+            general_tab = QWidget()
+            general_layout = QVBoxLayout(general_tab)
             form = QFormLayout()
             form.setLabelAlignment(Qt.AlignRight)
             form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
@@ -786,13 +800,72 @@ def run_ui(api: BackendApi, server: Any) -> int:
             audio_layout.addWidget(refresh_audio, 0, 1)
             form.addRow("Microphone", audio_row)
 
-            layout.addLayout(form)
+            general_layout.addLayout(form)
+            general_layout.addStretch(1)
+            self.settings_tabs.addTab(general_tab, "General")
             self.update_filename_preview()
+
+            discard_tab = QWidget()
+            discard_layout = QVBoxLayout(discard_tab)
+            discard_form = QFormLayout()
+            discard_form.setLabelAlignment(Qt.AlignRight)
+            discard_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+            self.discard_mode = QComboBox()
+            self.discard_mode.addItem("Move to SayClip Discarded", DISCARD_MODE_MOVE)
+            self.discard_mode.addItem("Delete permanently", DISCARD_MODE_DELETE_PERMANENTLY)
+            configured_discard_mode = str(api.config.discard.get("mode") or DISCARD_MODE_MOVE)
+            self.discard_mode.setCurrentIndex(max(0, self.discard_mode.findData(configured_discard_mode)))
+            discard_form.addRow("Mode", self.discard_mode)
+
+            self.discard_mode_pages = QStackedWidget()
+            move_page = QWidget()
+            move_layout = QFormLayout(move_page)
+            self.discard_folder_name = QLineEdit(
+                str(api.config.discard.get("folder_name") or DEFAULT_DISCARD_FOLDER_NAME)
+            )
+            move_layout.addRow("Folder name", self.discard_folder_name)
+            move_help = QLabel(
+                "The folder is created inside the active OBS profile Recording output directory. "
+                "Enter a folder name only, not a path. Existing names use (1), (2), and so on."
+            )
+            move_help.setObjectName("Muted")
+            move_help.setWordWrap(True)
+            move_layout.addRow("", move_help)
+            self.discard_mode_pages.addWidget(move_page)
+
+            delete_page = QWidget()
+            delete_layout = QVBoxLayout(delete_page)
+            delete_warning = QLabel(
+                "Recordings are deleted permanently without using the Recycle Bin. This cannot be undone."
+            )
+            delete_warning.setWordWrap(True)
+            delete_warning.setObjectName("Error")
+            delete_layout.addWidget(delete_warning)
+            delete_layout.addStretch(1)
+            self.discard_mode_pages.addWidget(delete_page)
+            discard_form.addRow("Configuration", self.discard_mode_pages)
+            self.discard_mode.currentIndexChanged.connect(self.discard_mode_pages.setCurrentIndex)
+            self.discard_mode_pages.setCurrentIndex(self.discard_mode.currentIndex())
+
+            discard_layout.addLayout(discard_form)
+            discard_layout.addStretch(1)
+            self.settings_tabs.addTab(discard_tab, "Discard")
 
             buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             layout.addWidget(buttons)
+
+        def accept(self) -> None:
+            if str(self.discard_mode.currentData() or DISCARD_MODE_MOVE) == DISCARD_MODE_MOVE:
+                try:
+                    validate_discard_folder_name(self.discard_folder_name.text())
+                except DiscardRecordingError as error:
+                    self.settings_tabs.setCurrentIndex(1)
+                    QMessageBox.warning(self, "Discard settings", str(error))
+                    return
+            super().accept()
 
         def choose_model_path(self) -> None:
             current = api.config.resolve_path(self.model_path.text()) if self.model_path.text().strip() else api.config.root
@@ -920,6 +993,12 @@ def run_ui(api: BackendApi, server: Any) -> int:
             api.config.data["naming"]["format"] = self.selected_filename_format()
             api.config.data["naming"]["datetime_format"] = self.datetime_format.text().strip() or "%Y-%m-%d_%H-%M-%S"
             api.config.data["audio"]["device"] = self.audio_device.currentText().strip() or "default"
+            discard_mode, folder_name = _normalized_discard_settings(
+                str(self.discard_mode.currentData() or DISCARD_MODE_MOVE),
+                self.discard_folder_name.text(),
+            )
+            api.config.data["discard"]["mode"] = discard_mode
+            api.config.data["discard"]["folder_name"] = folder_name
             save_config(api.config)
 
     def app_icon() -> QIcon:
@@ -955,6 +1034,17 @@ def run_ui(api: BackendApi, server: Any) -> int:
     finally:
         signal_timer.stop()
         signal.signal(signal.SIGINT, previous_sigint)
+
+
+def _normalized_discard_settings(mode: str, folder_name: str) -> tuple[str, str]:
+    normalized_mode = str(mode or "").strip()
+    if normalized_mode not in {DISCARD_MODE_MOVE, DISCARD_MODE_DELETE_PERMANENTLY}:
+        normalized_mode = DISCARD_MODE_MOVE
+    try:
+        normalized_folder = validate_discard_folder_name(folder_name)
+    except DiscardRecordingError:
+        normalized_folder = DEFAULT_DISCARD_FOLDER_NAME
+    return normalized_mode, normalized_folder
 
 
 def _rename_format_parts_from_template(template: str) -> tuple[list[tuple[str, bool, bool]], str | None]:
@@ -1239,6 +1329,10 @@ def _stylesheet() -> str:
     }
     QLabel#Muted {
         color: #aeb8c5;
+    }
+    QLabel#Error {
+        color: #f87171;
+        font-weight: 600;
     }
     QFrame#Card {
         background: #20242a;

@@ -925,3 +925,92 @@ def test_bridge_does_not_kill_non_easy_rename_service_on_port(monkeypatch) -> No
 
     assert bridge._kill_verified_backend_on_port(config) is False
     assert killed == []
+
+
+def test_discard_bridge_waits_for_recording_stopped_and_reports_exact_paths(monkeypatch, tmp_path: Path) -> None:
+    bridge = load_bridge()
+    posted = []
+    recording_path = tmp_path / "nested" / "recording.mkv"
+
+    class FakeObs:
+        OBS_FRONTEND_EVENT_RECORDING_STOPPED = 42
+
+        def __init__(self):
+            self.recording = True
+            self.stop_calls = 0
+            self.profile = object()
+
+        def obs_frontend_recording_active(self):
+            return self.recording
+
+        def obs_frontend_recording_stop(self):
+            self.stop_calls += 1
+            self.recording = False
+
+        def obs_frontend_get_profile_config(self):
+            return self.profile
+
+        def config_get_string(self, config, section, key):
+            values = {
+                ("Output", "Mode"): "Simple",
+                ("SimpleOutput", "FilePath"): str(tmp_path),
+            }
+            return values.get((section, key), "")
+
+        def obs_frontend_get_last_recording(self):
+            return str(recording_path)
+
+    fake_obs = FakeObs()
+    monkeypatch.setattr(bridge, "obs", fake_obs)
+    monkeypatch.setattr(bridge, "_post_bridge_command_result", lambda payload: posted.append(payload) or {"ok": True})
+
+    assert bridge.discard_recording("discard-1") is True
+    assert fake_obs.stop_calls == 1
+    assert posted == []
+
+    bridge._on_frontend_event(fake_obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED)
+
+    assert posted == [
+        {
+            "id": "discard-1",
+            "status": "done",
+            "recording_path": str(recording_path),
+            "recording_output_root": str(tmp_path),
+        }
+    ]
+    assert bridge._state.get("pending_discard") is None
+
+
+def test_discard_hotkey_uses_shared_backend_endpoint(monkeypatch) -> None:
+    bridge = load_bridge()
+    posted = []
+    monkeypatch.setattr(bridge, "load_bridge_config", lambda: {"backend": {"host": "127.0.0.1", "port": 1}})
+    monkeypatch.setattr(
+        bridge,
+        "_post_empty",
+        lambda config, path: posted.append(path) or {"ok": True, "confirmation_armed": True},
+    )
+
+    bridge._request_discard_recording()
+
+    assert posted == ["/api/discard/recording"]
+
+
+def test_recording_output_root_uses_advanced_profile_directory(monkeypatch, tmp_path: Path) -> None:
+    bridge = load_bridge()
+
+    class FakeObs:
+        def obs_frontend_get_profile_config(self):
+            return self
+
+        def config_get_string(self, config, section, key):
+            values = {
+                ("Output", "Mode"): "Advanced",
+                ("AdvOut", "RecType"): "Standard",
+                ("AdvOut", "RecFilePath"): str(tmp_path),
+            }
+            return values.get((section, key), "")
+
+    monkeypatch.setattr(bridge, "obs", FakeObs())
+
+    assert bridge.get_recording_output_root() == str(tmp_path)
