@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import importlib.util
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
@@ -63,6 +64,57 @@ _state = {
     "last_poll_error_log_at": 0.0,
 }
 _state_lock = threading.RLock()
+_microphone_guard = None
+
+
+def _load_microphone_guard():
+    path = Path(__file__).with_name("microphone_guard.py")
+    spec = importlib.util.spec_from_file_location("sayclip_microphone_guard", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _register_microphone_guard(config):
+    global _microphone_guard
+    module = _load_microphone_guard()
+    try:
+        _microphone_guard = module.MicrophoneGuard(config.get("microphone_guard", {}), _microphone_guard_notice)
+    except (TypeError, ValueError) as error:
+        _log("Invalid microphone guard config; using defaults: %s" % error, visible=True)
+        _microphone_guard = module.MicrophoneGuard({}, _microphone_guard_notice)
+    obs.timer_add(_tick_microphone_guard, 250)
+    _log("Microphone guard: enabled=%s source=%s silence_seconds=%s" % (
+        _microphone_guard.enabled, _microphone_guard.source_name, _microphone_guard.watch.timeout))
+
+
+def _microphone_guard_notice(payload):
+    message = payload["message"] if payload["alarm"] else "Microphone alarm cleared"
+    _log(message, visible=True)
+
+
+def _recording_audio_tracks():
+    profile = _obs_call("obs_frontend_get_profile_config")
+    if not profile or not hasattr(obs, "config_get_uint"):
+        raise RuntimeError("Cannot check the recorded audio tracks")
+    advanced = (_obs_config_string(profile, "Output", "Mode") or "Simple").lower() == "advanced"
+    section, key = ("AdvOut", "RecTracks") if advanced else ("SimpleOutput", "RecTracks")
+    if advanced and (_obs_config_string(profile, "AdvOut", "RecType") or "").lower() == "ffmpeg":
+        key = "FFAudioMixes"
+    return int(obs.config_get_uint(profile, section, key))
+
+
+def _tick_microphone_guard():
+    if _microphone_guard is None:
+        return
+    recording = _obs_call_bool("obs_frontend_recording_active")
+    paused = _obs_call_bool("obs_frontend_recording_paused")
+    try:
+        tracks = _recording_audio_tracks() if recording and not paused else 0
+    except Exception:
+        # An unverifiable recording route must not look healthy.
+        tracks = 0
+    _microphone_guard.tick(recording, paused, tracks)
 
 
 def script_description():
@@ -80,6 +132,8 @@ def script_load(settings):
     _register_hotkeys(settings)
     _register_command_polling()
     config = load_bridge_config()
+    if obs:
+        _register_microphone_guard(config)
     if config["backend"].get("start_mode") == "on_obs_start":
         if is_setup_complete():
             request_start_backend()
@@ -88,7 +142,12 @@ def script_load(settings):
 
 
 def script_unload():
+    global _microphone_guard
     _log("Unloading SayClip Bridge")
+    if obs and _microphone_guard is not None:
+        obs.timer_remove(_tick_microphone_guard)
+        _microphone_guard.close()
+        _microphone_guard = None
     _cancel_owned_extended_recording("bridge_unload")
     if obs:
         try:
@@ -861,6 +920,8 @@ def _post_bridge_state():
         "recording_output_path": _text_or_none(get_last_recording_path()),
         "replay_output_path": _text_or_none(get_last_replay_path()),
     }
+    if _microphone_guard is not None:
+        payload["microphone_guard"] = _microphone_guard.payload
     try:
         return _post_json(load_bridge_config(), "/api/bridge/state", payload)
     except Exception as error:

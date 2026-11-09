@@ -67,6 +67,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "output_container": "mkv",
         "delete_sources_after_success": False,
     },
+    "microphone_guard": {
+        "enabled": True,
+        "source_name": "Mic/Aux",
+        "silence_seconds": 30,
+        "threshold_db": -60,
+    },
     "audio": {
         "device": "fake",
         "max_record_seconds": 8,

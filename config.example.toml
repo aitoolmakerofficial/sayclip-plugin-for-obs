@@ -65,6 +65,14 @@ output_container = "mkv"
 # Sources are retained even after a successful merge until field testing is complete.
 delete_sources_after_success = false
 
+[microphone_guard]
+enabled = true
+# OBS source name, not the Windows input device name.
+source_name = "Mic/Aux"
+# Continuous silence during recording triggers a repeating alarm.
+silence_seconds = 30
+threshold_db = -60
+
 [audio]
 device = "default"
 max_record_seconds = 8

@@ -94,7 +94,7 @@ class DefaultMicrophoneRecorder:
 
         sample_rate = 16000
         device = None if self.device == "default" else _resolve_sounddevice_device(sd, self.device)
-        logger.debug("Resolved sounddevice device: configured=%s resolved=%s", self.device, device)
+        logger.info("Resolved sounddevice device: configured=%s resolved=%s", self.device, device)
         if device is None and self.device != "default":
             raise AudioRecorderError(f"Selected microphone was not found: {self.device}")
         try:
@@ -135,6 +135,16 @@ class DefaultMicrophoneRecorder:
             peak = _peak_level(recording)
         except ValueError:
             peak = 0.0
+        logger.info(
+            "Microphone capture: device=%s samples=%s peak=%s",
+            self.device, len(recording), peak,
+        )
+        if len(recording) == 0 or peak <= 1e-7:
+            raise AudioRecorderError(
+                f"No audio signal from microphone: {self.device}. "
+                "Check microphone mute and virtual mixer routing, or select the physical microphone. "
+                "Speech recognition was not started; the original video was kept."
+            )
         buffer = io.BytesIO()
         sf.write(buffer, recording, sample_rate, format="WAV")
         data = buffer.getvalue()

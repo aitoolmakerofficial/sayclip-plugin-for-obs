@@ -423,6 +423,37 @@ unknown-game__2026-06-14_17-08-20__clean-overtake.mp4
 
 Open `Settings` and choose a different microphone. Then save settings and try again.
 
+### Recording microphone alarm (Windows OBS)
+
+SayClip monitors the actual OBS source `Mic/Aux` throughout recording. After
+30 continuous seconds below -60 dB, it repeats an alternating alarm and shows
+a red warning in the SayClip dock. Any signal above the threshold resets the
+timer and clears the alarm. Pausing or stopping recording silences the alarm;
+resuming starts a fresh timeout. Recording is never stopped automatically.
+
+The check also covers a muted, inactive, missing or monitor-only source and a
+source not assigned to any recorded audio track. Failure of the level monitor
+also triggers the alarm after the timeout. The sound runs inside the OBS script
+and does not require the SayClip backend or the dock to be open.
+
+Configure this in `config.toml`, then reload `SayClip_Starter.py` in OBS:
+
+```toml
+[microphone_guard]
+enabled = true
+# Exact OBS source name, not the Windows device name:
+source_name = "Mic/Aux"
+silence_seconds = 30
+threshold_db = -60
+```
+
+Long thinking pauses can trigger the alarm, and background noise above the
+threshold can keep it quiet. This checks the signal level, not speech content.
+Use headphones so the alarm itself does not feed back into the microphone.
+Before relying on it, make a test recording: mute the selected OBS microphone
+for 30 seconds, confirm the repeating alarm, then unmute and speak to clear it.
+
+
 ### The dock or Stream Deck says bridge disconnected
 
 Check OBS:

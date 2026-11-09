@@ -369,6 +369,7 @@ class BackendApi:
             "replay_buffer_active": bool(payload.get("replay_buffer_active")),
             "recording_output_path": _optional_path_text(payload.get("recording_output_path")),
             "replay_output_path": _optional_path_text(payload.get("replay_output_path")),
+            "microphone_guard": payload.get("microphone_guard") if isinstance(payload.get("microphone_guard"), dict) else None,
         }
         with self._lock:
             was_recording = bool(self.obs_state.get("recording_active")) if self._obs_state_is_fresh() else False
@@ -478,7 +479,11 @@ class BackendApi:
 
     def _process_voice(self, job_id: str) -> None:
         try:
-            logger.debug("Voice pipeline started: job_id=%s", job_id)
+            job = self._job_by_id(job_id)
+            logger.info(
+                "Voice pipeline started: job_id=%s original_path=%s",
+                job_id, job.original_path if job else None,
+            )
             readiness_error = self.stt_engine.readiness_error()
             if readiness_error:
                 logger.warning("Voice pipeline blocked by STT readiness: job_id=%s error=%s", job_id, readiness_error)
@@ -807,6 +812,8 @@ class BackendApi:
             "recording_output_path": self.obs_state.get("recording_output_path") if fresh else None,
             "replay_output_path": self.obs_state.get("replay_output_path") if fresh else None,
             "fresh": fresh,
+            **({"microphone_guard": self.obs_state["microphone_guard"]}
+               if fresh and self.obs_state.get("microphone_guard") is not None else {}),
         }
 
     def _obs_output_folder_locked(self) -> Path | None:

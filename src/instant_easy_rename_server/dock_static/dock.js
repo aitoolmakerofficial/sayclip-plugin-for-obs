@@ -190,6 +190,12 @@ function hideHealth() {
 
 function updateHealth(data) {
   bridgeConnected = false;
+  const guard = data.obs && data.obs.microphone_guard;
+  if (guard && guard.alarm) {
+    bridgeConnected = data.bridge === "connected";
+    showHealth("error", "MICROPHONE SILENT", guard.message || "Check your microphone. Recording is still running.");
+    return;
+  }
   const actionSpecificError = data.phase === "error" && Boolean(data.last_error);
   if (data.backend !== "ok") {
     showHealth("error", "BACKEND ERROR", "Backend reported an error.");

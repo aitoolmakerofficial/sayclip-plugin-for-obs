@@ -21,6 +21,17 @@ class NoopRenamer:
         return Path(job.original_path)
 
 
+def test_microphone_alarm_remains_in_status_until_obs_clears_it(tmp_path):
+    api = BackendApi(load_config(tmp_path))
+    guard = {"alarm": True, "state": "alarm", "message": "Microphone is silent"}
+    api.record_bridge_state({"recording_active": True, "microphone_guard": guard})
+    assert api.status()["obs"]["microphone_guard"] == guard
+    api.last_result_expires_at = None
+    assert api.status()["obs"]["microphone_guard"]["alarm"]
+    api.record_bridge_state({"recording_active": True, "microphone_guard": {"alarm": False}})
+    assert not api.status()["obs"]["microphone_guard"]["alarm"]
+
+
 def test_health_contract(tmp_path: Path) -> None:
     api = BackendApi(load_config(tmp_path))
 
